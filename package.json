@@ -1,0 +1,17 @@
+{
+  "name": "homebridge-prusa-connect-camera",
+  "version": "1.0.0",
+  "description": "Homebridge plugin to upload snapshots to Prusa Connect",
+  "main": "index.js",
+  "keywords": ["homebridge-plugin"],
+  "engines": {
+    "node": ">=18.0.0",
+    "homebridge": ">=1.0.0"
+  },
+  "author": "Justin Dyck",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jhdyck/homebridge-prusa-connect-camera.git"
+  }
+}

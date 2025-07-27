@@ -1,0 +1,37 @@
+{
+  "pluginAlias": "PrusaConnectCamera",
+  "pluginType": "platform",
+  "schema": {
+    "type": "object",
+    "title": "",
+
+    "properties": {
+      "name": {
+        "title": "Camera Name",
+        "type": "string",
+        "default": "3D Printer Camera"
+      },
+      "videoSource": {
+        "title": "Video Source (e.g. /dev/video0)",
+        "type": "string",
+        "default": "/dev/video0"
+      },
+      "token": {
+        "title": "Prusa Connect Token",
+        "type": "string"
+      },
+      "fingerprint": {
+        "title": "Camera Fingerprint (leave blank to generate automatically)",
+        "type": "string"
+      },
+      "snapshotInterval": {
+        "title": "Snapshot Interval (seconds)",
+        "type": "integer",
+        "default": 10,
+        "minimum": 10,
+        "maximum": 60
+      }
+    },
+    "required": ["name", "videoSource", "token"]
+  }
+}
