@@ -15,7 +15,6 @@ A Homebridge plugin to upload webcam snapshots from your Raspberry Pi (or compat
 - Simple single-camera setup.
 - Configurable snapshot interval (10–60 seconds).
 - User-configurable ffmpeg input options for video device and resolution.
-- Works on Raspberry Pi and Linux devices with V4L2-compatible cameras.
 - Handles device busy errors gracefully with retry logic.
 
 ---
@@ -28,63 +27,62 @@ Install the plugin globally using npm:
 sudo npm install -g homebridge-prusa-connect-camera
 ```
 
-Then add the plugin to your Homebridge config.
-
 ## Configuration
 
-Add the following platform section to your `config.json`:
+Configuration can be done via the configuration UI in the plugin, or you can add the following platform section to your `config.json`, and replace the values as needed:
 
 ```json
 {
 "platforms": [
 {
 "platform": "PrusaConnectCamera",
-"name": "Prusa MK3.5S",
-"token": "",
-"videoSource": "-f v4l2 -video_size 1280x960 -i /dev/video0",
-"snapshotInterval": 10
+"name": "InsertCameraNameHere",
+"token": "InsertCameraTokenHere",
+"videoSource": "InsertVideoSourceHere",
+"snapshotInterval": 30
 }
 ]
 }
 ```
 
 Field descriptions:
-- platform: Must be "PrusaConnectCamera" (required)
-- name: Friendly camera name used in logs (optional, defaults to "snapshot")
-- token: Your Prusa Connect API token, must be 20 or more characters (required)
-- videoSource: Full ffmpeg input string specifying device and options (optional, default is "-f v4l2 -video_size 1280x720 -i /dev/video0")
-- snapshotInterval: Interval between snapshots in seconds, between 10 and 60 (optional, default is 10)
+- `platform`: Must be "PrusaConnectCamera"
+- `name`: Friendly camera name used in logs
+- `token`: Your Prusa Connect API token, must be 20 or more characters
+- `videoSource`: Full ffmpeg input string specifying device and options (eg. -i /dev/video0)
+- `snapshotInterval`: Interval between snapshots in seconds, between 10 and 60
 
 Note: The videoSource field lets you fully customize your ffmpeg input options, for example to change resolution or device path. Currently, the plugin supports only one camera.
 
 ---
 
 ## Usage
-- After installation and configuration, start or restart Homebridge.
-- The plugin will automatically generate and save a unique fingerprint in your Homebridge `config.json`.
+- After installation, configure the plugin with your camera name, video source, and the token from Prusa Connect, then restart Homebridge.
+- To obtain the token from Prusa Connect, navigate to the camera tab in the desired printer, and click `Add new other camera`. A token will appear that you can copy.
+- The plugin will automatically generate and save a unique fingerprint in your Homebridge `config.json` after saving and restarting.
 - Snapshots will be taken and uploaded to Prusa Connect at the configured interval.
 - If the video device is busy, the plugin will retry a few times before skipping that snapshot to avoid conflicts.
 
 ---
 
 ## Compatibility
-- Designed for Linux systems with V4L2-compatible video devices such as Raspberry Pi, many NAS devices, and Linux desktops.
-- Does not currently support Windows or macOS webcams.
+- Designed for devices such as Raspberry Pi, many NAS devices, and Linux desktops.
+- This has not been tested on macOS or Windows systems.
 - Intended for USB webcams or Raspberry Pi camera modules.
 
 ---
 
 ## Troubleshooting
-- Ensure your camera device path (e.g., /dev/video0) is correct and accessible by the Homebridge user.
-- Use ffmpeg with the command "ffmpeg -list_formats all -f v4l2 -i /dev/video0" to verify supported formats and resolutions.
+- Ensure your camera device path (e.g., -i /dev/video0) is correct and accessible by the Homebridge user.
+- If you're already using `homebridge-camera-ffmpeg`, try using the same video source value that you're using there.
 - Check Homebridge logs for upload status and errors.
-- If you encounter "Resource busy" errors, the plugin will handle them gracefully by retrying automatically.
+- If you encounter "Resource busy" errors, the plugin will handle them by retrying 3 times automatically before skipping the current snapshot.
 
 ---
 
 ## Contributing
 
-Contributions and improvements are welcome! Please open issues or pull requests on [GitHub](https://github.com/jhdyck/homebridge-prusa-connect-camera).
+Contributions and improvements are welcome! Please open issues or pull requests on [GitHub](https://github.com/jhdyck/homebridge-prusa-connect-camera). I'm very new to the world of coding, so please be patient as I work to improve this plugin!
 
 License
 
