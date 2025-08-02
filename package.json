@@ -1,9 +1,22 @@
 {
   "name": "homebridge-prusa-connect-camera",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Homebridge plugin to upload snapshots to Prusa Connect",
   "main": "index.js",
-  "keywords": ["homebridge-plugin"],
+  "keywords": [
+    "homebridge-plugin",
+    "prusa",
+    "3d printer",
+    "camera",
+    "snapshot",
+    "prusa connect",
+    "raspberry pi",
+    "usb webcam"
+  ],
+  "homepage": "https://github.com/jhdyck/homebridge-prusa-connect-camera",
+  "bugs": {
+    "url": "https://github.com/jhdyck/homebridge-prusa-connect-camera/issues"
+  },
   "engines": {
     "node": ">=18.0.0",
     "homebridge": ">=1.0.0"
