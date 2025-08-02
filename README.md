@@ -31,17 +31,21 @@ sudo npm install -g homebridge-prusa-connect-camera
 
 Configuration can be done via the configuration UI in the plugin, or you can add the following platform section to your `config.json`, and replace the values as needed:
 
+## Configuration
+
+Configuration can be done via the configuration UI in the plugin, or you can add the following platform section to your `config.json`, and replace the values as needed:
+
 ```json
 {
-"platforms": [
-{
-"platform": "PrusaConnectCamera",
-"name": "InsertCameraNameHere",
-"token": "InsertCameraTokenHere",
-"videoSource": "InsertVideoSourceHere",
-"snapshotInterval": 30
-}
-]
+  "platforms": [
+    {
+      "platform": "PrusaConnectCamera",
+      "name": "InsertCameraNameHere",
+      "token": "InsertCameraTokenHere",
+      "videoSource": "InsertVideoSourceHere",
+      "snapshotInterval": 30
+    }
+  ]
 }
 ```
 
