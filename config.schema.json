@@ -9,12 +9,12 @@
       "name": {
         "title": "Camera Name",
         "type": "string",
-        "default": "3D Printer Camera"
+        "default": "Camera"
       },
       "videoSource": {
         "title": "Video Source (e.g. /dev/video0)",
         "type": "string",
-        "default": "/dev/video0"
+        "default": "-i /dev/video0"
       },
       "token": {
         "title": "Prusa Connect Token",
@@ -27,7 +27,7 @@
       "snapshotInterval": {
         "title": "Snapshot Interval (seconds)",
         "type": "integer",
-        "default": 10,
+        "default": 30,
         "minimum": 10,
         "maximum": 60
       }
