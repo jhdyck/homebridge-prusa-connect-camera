@@ -1,6 +1,7 @@
-k{
+{
   "pluginAlias": "PrusaConnectCamera",
   "pluginType": "platform",
+  "singular": true,
   "schema": {
     "type": "object",
     "title": "",
@@ -14,7 +15,7 @@ k{
         "title": "Video Source (e.g. /dev/video0)",
         "type": "string",
         "default": "-f v4l2 -video_size 960x720 -i /dev/video0",
-        "description": "Full ffmpeg input arguments for your camera. Example for a USB webcam: -f v4l2 -video_size 960x720 -i /dev/video0"
+        "description": "Full ffmpeg input arguments for your camera."
       },
       "token": {
         "title": "Prusa Connect Token",
@@ -38,35 +39,33 @@ k{
         "default": false,
         "description": "Print detailed logs for troubleshooting. Leave off under normal operation."
       },
+
       "rebroadcastEnabled": {
         "title": "[EXPERIMENTAL] Enable Video Rebroadcasting",
         "type": "boolean",
         "default": false,
-        "description": "When enabled, the plugin exclusively owns the camera and exposes an MJPEG stream and a snapshot URL for other plugins (e.g., Camera FFmpeg)."
+        "description": "Plugin exclusively owns the camera and exposes an MJPEG stream + snapshot URL for other plugins."
       },
       "rebroadcastPort": {
         "title": "Rebroadcast Port",
         "type": "integer",
         "default": 8088,
         "minimum": 1,
-        "maximum": 65535,
-        "condition": { "functionBody": "return model.rebroadcastEnabled === true;" }
+        "maximum": 65535
       },
       "streamFps": {
         "title": "Stream FPS",
         "type": "integer",
         "default": 15,
         "minimum": 1,
-        "maximum": 60,
-        "condition": { "functionBody": "return model.rebroadcastEnabled === true;" }
+        "maximum": 60
       },
       "mjpegQuality": {
         "title": "MJPEG Quality (2..31, lower = better)",
         "type": "integer",
         "default": 7,
         "minimum": 2,
-        "maximum": 31,
-        "condition": { "functionBody": "return model.rebroadcastEnabled === true;" }
+        "maximum": 31
       },
       "maxFrameAgeMs": {
         "title": "Max Frame Age for Upload (ms)",
@@ -74,7 +73,6 @@ k{
         "default": 5000,
         "minimum": 500,
         "maximum": 60000,
-        "condition": { "functionBody": "return model.rebroadcastEnabled === true;" },
         "description": "If the latest frame is older than this, the plugin skips uploading that cycle."
       },
       "rebroadcastStreamUrl": {
@@ -82,7 +80,6 @@ k{
         "type": "string",
         "readOnly": true,
         "default": "http://127.0.0.1:8088/stream.mjpg",
-        "condition": { "functionBody": "return model.rebroadcastEnabled === true;" },
         "description": "If you change the port, update the URL accordingly."
       },
       "rebroadcastSnapshotUrl": {
@@ -90,7 +87,6 @@ k{
         "type": "string",
         "readOnly": true,
         "default": "http://127.0.0.1:8088/snapshot.jpg",
-        "condition": { "functionBody": "return model.rebroadcastEnabled === true;" },
         "description": "If you change the port, update the URL accordingly."
       }
     },
@@ -115,12 +111,12 @@ k{
         "expanded": false,
         "items": [
           "rebroadcastEnabled",
-          { "key": "rebroadcastPort", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-          { "key": "streamFps", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-          { "key": "mjpegQuality", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-          { "key": "maxFrameAgeMs", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-          { "key": "rebroadcastStreamUrl", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-          { "key": "rebroadcastSnapshotUrl", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } }
+          "rebroadcastPort",
+          "streamFps",
+          "mjpegQuality",
+          "maxFrameAgeMs",
+          "rebroadcastStreamUrl",
+          "rebroadcastSnapshotUrl"
         ]
       }
     ]
