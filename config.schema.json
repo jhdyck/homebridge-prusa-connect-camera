@@ -101,6 +101,7 @@
         "title": "Video Rebroadcasting [Experimental]",
         "expandable": true,
         "expanded": false,
+        "collapsible": true,
         "items": [
           "rebroadcastEnabled",
           "rebroadcastPort",
