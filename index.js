@@ -5,13 +5,12 @@ const path = require('path');
 const axios = require('axios');
 const { spawn, exec } = require('child_process');
 
-// Simple ANSI color codes for console logs
+// ANSI color codes for console logs
 const COLORS = {
   reset: "\x1b[0m",
   red: "\x1b[31m",
   green: "\x1b[32m",
   yellow: "\x1b[33m",
-  white: "\x1b[37m"
 };
 
 let logger, config, api;
@@ -31,105 +30,98 @@ class PrusaConnectCameraPlatform {
     api = homebridgeApi;
 
     this.cameraName = config.name || 'Prusa Camera';
-    this.configPath = '/var/lib/homebridge/config.json'; // Could be configurable or autodetected
+    this.configPath = '/var/lib/homebridge/config.json';
 
-    // --- Rebroadcast settings (UI-configurable) ---
-    // Default: OFF until the user checks the box in the UI.
-    this.rebroadcastEnabled = config.rebroadcastEnabled === true;
+    // --- User-configurable settings ---
+    this.rebroadcastEnabled = config.rebroadcastEnabled === true;   // default OFF until enabled in UI
     this.rebroadcastPort = Number(config.rebroadcastPort || 8088);
-    this.streamFps = Number(config.streamFps || 15);           // MJPEG stream fps
-    this.mjpegQuality = Number(config.mjpegQuality || 7);       // 2..31 (lower = better)
-    this.maxFrameAgeMs = Number(config.maxFrameAgeMs || 5000);  // acceptable frame age for upload (ms)
+    this.streamFps = Number(config.streamFps || 15);
+    this.mjpegQuality = Number(config.mjpegQuality || 7);           // 2..31 (lower = better)
+    this.maxFrameAgeMs = Number(config.maxFrameAgeMs || 5000);
+    this.debugLogging = config.debugLogging === true;
 
-    // Camera source (string of ffmpeg args)
-    // Keep your previous default style, but ensure v4l2 flags are present for typical USB cams.
+    // Camera source for ffmpeg input
     this.videoSource = config.videoSource || '-f v4l2 -video_size 960x720 -i /dev/video0';
 
     // Prusa auth
     this.token = config.token;
     this.fingerprint = config.fingerprint;
 
-    // Buffers & clients for rebroadcast
+    // Rebroadcast state
     this._frameBuf = Buffer.alloc(0);
     this._latestFrame = null;
     this._latestAt = 0;
     this._clients = new Set();
     this._capture = null;
 
-    logger(`PrusaConnectCameraPlatform initialized with config: ${JSON.stringify({
+    this.debug(`Init config: ${JSON.stringify({
       name: this.cameraName,
-      videoSource: this.videoSource,
       rebroadcastEnabled: this.rebroadcastEnabled,
       rebroadcastPort: this.rebroadcastPort,
       streamFps: this.streamFps,
       mjpegQuality: this.mjpegQuality,
       maxFrameAgeMs: this.maxFrameAgeMs,
       hasToken: !!this.token,
-      hasFingerprint: !!this.fingerprint
+      hasFingerprint: !!this.fingerprint,
+      videoSource: this.videoSource
     })}`);
 
-    // Start the single-owner capture & HTTP server if rebroadcasting is enabled
     if (this.rebroadcastEnabled) {
       this.startCapturePipeline();
       this.startHttpServer();
     }
 
-    // Start the periodic upload loop (uses the live buffer when rebroadcasting)
     this.startSnapshotLoop();
   }
 
-  logSuccess(msg){ logger(`${COLORS.green}${msg}${COLORS.reset}`); }
-  logError(msg){ logger(`${COLORS.red}${msg}${COLORS.reset}`); }
-  logWarn(msg){ logger(`${COLORS.yellow}${msg}${COLORS.reset}`); }
+  // --- logging helpers ---
+  logSuccess(msg) { logger(`${COLORS.green}${msg}${COLORS.reset}`); }
+  logError(msg)   { logger(`${COLORS.red}${msg}${COLORS.reset}`); }
+  logWarn(msg)    { logger(`${COLORS.yellow}${msg}${COLORS.reset}`); }
+  debug(msg)      { if (this.debugLogging) logger(`[DEBUG] ${msg}`); }
 
+  // Persist generated fingerprint back into config.json
   updateConfigFingerprint(newFingerprint) {
     try {
       const data = fs.readFileSync(this.configPath, 'utf8');
       const cfg = JSON.parse(data);
-
-      if (!cfg.platforms) {
-        this.logError('No platforms section found in config.json');
-        return;
-      }
-      const platform = cfg.platforms.find(p => p.platform === 'PrusaConnectCamera');
-      if (!platform) {
-        this.logError('PrusaConnectCamera platform not found in config.json');
-        return;
-      }
-      platform.fingerprint = newFingerprint;
+      if (!cfg.platforms) return this.logError('No platforms section found in config.json');
+      const p = cfg.platforms.find(p => p.platform === 'PrusaConnectCamera');
+      if (!p) return this.logError('PrusaConnectCamera platform not found in config.json');
+      p.fingerprint = newFingerprint;
       fs.writeFileSync(this.configPath, JSON.stringify(cfg, null, 2), 'utf8');
       this.logSuccess(`Updated fingerprint in config.json: ${newFingerprint}`);
-    } catch (err) {
-      this.logError(`Error updating config.json fingerprint: ${err.message}`);
+    } catch (e) {
+      this.logError(`Error updating config.json fingerprint: ${e.message}`);
     }
   }
 
   // ========== CAPTURE & REBROADCAST ==========
-
   startCapturePipeline() {
-    // Single persistent ffmpeg that owns /dev/video0 and outputs MJPEG frames on stdout.
-    // Consumers (HomeKit via Camera-ffmpeg and our snapshot uploader) never touch /dev/video0.
+    // Single persistent ffmpeg that owns the physical device and outputs MJPEG frames on stdout.
     const args = [
       ...this.videoSource.trim().split(/\s+/),
       '-r', String(this.streamFps),
       '-f', 'image2pipe',
       '-vcodec', 'mjpeg',
       '-q:v', String(this.mjpegQuality),
-      '-' // stdout
+      '-'
     ];
+    this.debug(`Starting capture ffmpeg with args: ${JSON.stringify(args)}`);
 
     this._capture = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     this._capture.stderr.on('data', d => {
       const s = d.toString();
-      if (/Error|fail|ioctl|resource busy|No such file/i.test(s)) {
+      if (/Error|fail|ioctl|resource busy|No such file|not found/i.test(s)) {
         this.logWarn(`[Capture] ffmpeg: ${s.trim()}`);
+      } else {
+        this.debug(`[Capture] ${s.trim()}`);
       }
     });
 
     this._capture.on('exit', (code, sig) => {
       this.logWarn(`[Capture] ffmpeg exited (code=${code}, sig=${sig}). Will retry in 5s.`);
-      // Clear frame buffer so uploads don't use stale frames forever
       this._latestFrame = null;
       this._latestAt = 0;
       setTimeout(() => this.startCapturePipeline(), 5000);
@@ -141,17 +133,18 @@ class PrusaConnectCameraPlatform {
 
     this._capture.stdout.on('data', chunk => {
       this._frameBuf = Buffer.concat([this._frameBuf, chunk]);
+
       let start = this._frameBuf.indexOf(SOI);
       while (start !== -1) {
         const end = this._frameBuf.indexOf(EOI, start + 2);
         if (end === -1) break; // incomplete frame; wait for more
         const frame = this._frameBuf.slice(start, end + 2);
 
-        // store latest frame for uploads
+        // store latest for uploads
         this._latestFrame = frame;
         this._latestAt = Date.now();
 
-        // push to MJPEG clients
+        // push to stream clients
         this._clients.forEach((res) => this._writeMjpegFrame(res, frame));
 
         // consume buffer
@@ -164,6 +157,7 @@ class PrusaConnectCameraPlatform {
   startHttpServer() {
     const srv = http.createServer((req, res) => {
       if (req.url === '/stream.mjpg') {
+        this.debug('Client connected: /stream.mjpg');
         res.writeHead(200, {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache',
@@ -171,7 +165,10 @@ class PrusaConnectCameraPlatform {
           'Content-Type': 'multipart/x-mixed-replace; boundary=--frame'
         });
         this._clients.add(res);
-        req.on('close', () => this._clients.delete(res));
+        req.on('close', () => {
+          this._clients.delete(res);
+          this.debug('Client disconnected: /stream.mjpg');
+        });
         if (this._latestFrame) this._writeMjpegFrame(res, this._latestFrame);
         return;
       }
@@ -206,12 +203,11 @@ class PrusaConnectCameraPlatform {
   }
 
   // ========== PRUSA SNAPSHOT LOOP ==========
-
   startSnapshotLoop() {
     let token = this.token;
     let fingerprint = this.fingerprint;
 
-    logger(`[PrusaConnectCamera] Token received: "${token}" (length: ${token ? token.length : 'undefined'})`);
+    this.debug(`Token length: ${token ? token.length : 'undefined'}`);
 
     if (!fingerprint || fingerprint.length < 20) {
       fingerprint = Buffer.from('homebridge-' + Math.random().toString(36).slice(2) + Date.now().toString())
@@ -232,10 +228,9 @@ class PrusaConnectCameraPlatform {
     const uploadOnce = async () => {
       try {
         if (this.rebroadcastEnabled) {
-          // Use the most recent frame from the capture pipeline
           const age = Date.now() - this._latestAt;
           if (!this._latestFrame || age > this.maxFrameAgeMs) {
-            this.logWarn(`[Prusa] No fresh frame available (age=${age}ms). Skipping this cycle.`);
+            this.debug(`[Prusa] Skipping upload, no fresh frame (age=${age}ms).`);
             return;
           }
           await axios.put(url, this._latestFrame, {
@@ -246,14 +241,14 @@ class PrusaConnectCameraPlatform {
             }
           });
           const t = new Date().toLocaleTimeString();
-          this.logSuccess(`${COLORS.white}[${t}]${COLORS.reset} Uploaded ${this.cameraName} snapshot successfully (buffer)`);
+          this.logSuccess(`[${t}] Uploaded ${this.cameraName} snapshot successfully (buffer)`);
           return;
         }
 
-        // Fallback path (rebroadcast disabled): one-off ffmpeg capture (may contend if other plugins open the device)
+        // Fallback: one-off capture (may contend with other processes)
         const tmpFile = `prusa-snap-${Date.now()}.jpg`;
         const ok = await this.captureSnapshot(tmpFile, this.videoSource);
-        if (!ok) return; // resource busy logged inside
+        if (!ok) return;
         const data = fs.readFileSync(tmpFile);
         fs.unlinkSync(tmpFile);
         await axios.put(url, data, {
@@ -264,12 +259,12 @@ class PrusaConnectCameraPlatform {
           }
         });
         const t = new Date().toLocaleTimeString();
-        this.logSuccess(`${COLORS.white}[${t}]${COLORS.reset} Uploaded ${this.cameraName} snapshot successfully (file: ${tmpFile})`);
+        this.logSuccess(`[${t}] Uploaded ${this.cameraName} snapshot successfully (file)`);
       } catch (err) {
         if (err && err.response) {
-          this.logError(`[${new Date().toLocaleTimeString()}] Upload error: ${err.response.status} - ${JSON.stringify(err.response.data)}`);
+          this.logError(`Upload error: ${err.response.status} - ${JSON.stringify(err.response.data)}`);
         } else {
-          this.logError(`[${new Date().toLocaleTimeString()}] Upload error: ${err?.message || err}`);
+          this.logError(`Upload error: ${err?.message || err}`);
         }
       }
     };
@@ -287,24 +282,25 @@ class PrusaConnectCameraPlatform {
     loop().catch(e => this.logError(`Snapshot loop crashed: ${e?.message || e}`));
   }
 
-  // Back-compat single-capture function (used only when rebroadcastDisabled)
+  // One-off capture helper (used only when rebroadcast is disabled)
   captureSnapshot(tmpFile, videoSource, maxRetries = 3, retryDelayMs = 3000) {
     let attempt = 0;
     const tryCap = () => new Promise((resolve, reject) => {
       const cmd = `ffmpeg ${videoSource} -frames 1 ${tmpFile} -y`;
+      this.debug(`Running capture: ${cmd}`);
       exec(cmd, (error, stdout, stderr) => {
         if (error) {
           if (/resource busy/i.test(stderr || '')) {
             attempt++;
             if (attempt <= maxRetries) {
-              this.logWarn(`Resource busy (attempt ${attempt}/${maxRetries}), retrying in ${retryDelayMs/1000}s.`);
+              this.logWarn(`Resource busy (attempt ${attempt}/${maxRetries}); retrying in ${retryDelayMs/1000}s`);
               return setTimeout(() => tryCap().then(resolve).catch(reject), retryDelayMs);
             }
             this.logWarn(`Resource busy persists after ${maxRetries} attempts; skipping snapshot.`);
             return resolve(false);
           }
           this.logError(`FFmpeg exec error: ${error.message}`);
-          logger(`FFmpeg stderr: ${stderr}`);
+          if (this.debugLogging) logger(stderr);
           return reject(error);
         }
         resolve(true);

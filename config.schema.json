@@ -30,10 +30,14 @@
         "type": "integer",
         "default": 30,
         "minimum": 10,
-        "maximum": 60
+        "maximum": 60"
       },
-
-      /* --- Experimental Rebroadcasting --- */
+      "debugLogging": {
+        "title": "Enable Debug Logging",
+        "type": "boolean",
+        "default": false,
+        "description": "Print detailed logs for troubleshooting. Leave off under normal operation."
+      },
       "rebroadcastEnabled": {
         "title": "[EXPERIMENTAL] Enable Video Rebroadcasting",
         "type": "boolean",
@@ -100,7 +104,8 @@
           "videoSource",
           "token",
           "fingerprint",
-          "snapshotInterval"
+          "snapshotInterval",
+          "debugLogging"
         ]
       },
       {
