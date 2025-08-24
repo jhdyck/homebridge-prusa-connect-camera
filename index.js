@@ -2,7 +2,6 @@
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
-const path = require('path');
 const axios = require('axios');
 const { spawn, exec } = require('child_process');
 
@@ -40,7 +39,7 @@ class PrusaConnectCameraPlatform {
     };
 
     // ---------- User-configurable settings ----------
-    this.rebroadcastEnabled = config.rebroadcastEnabled === true; // default OFF until enabled in UI
+    this.rebroadcastEnabled = config.rebroadcastEnabled === true; // OFF until enabled in UI
     this.rebroadcastPort = num(config.rebroadcastPort, 8088);
 
     // Text fields in UI; coerce here
@@ -49,7 +48,7 @@ class PrusaConnectCameraPlatform {
     // Stream Quality (1..10) → ffmpeg -q:v (2..31, lower=better)
     const uiQuality = num(config.streamQuality ?? config.mjpegQuality, 7);
     this.mjpegQscale = Math.max(2, Math.min(31, Math.round(31 - (uiQuality - 1) * (29 / 9))));
-    // uiQuality=10 → q=~2 (best), uiQuality=1 → q=~31 (lowest)
+    // uiQuality=10 → q≈2 (best), uiQuality=1 → q≈31 (lowest)
 
     // Snapshot Upload Limit (seconds) → ms
     this.maxFrameAgeMs = (() => {
@@ -106,7 +105,7 @@ class PrusaConnectCameraPlatform {
     logger(`[${t}] ${COLORS.green}Uploaded ${this.cameraName} snapshot successfully${COLORS.reset}${suffixText ? ' ' + suffixText : ''}`);
   }
 
-  // Persist fingerprint or URLs back into config.json
+  // Persist fields back into config.json
   updateConfig(nextProps) {
     try {
       const data = fs.readFileSync(this.configPath, 'utf8');
@@ -131,18 +130,12 @@ class PrusaConnectCameraPlatform {
       this.logError(`Error updating config.json: ${e.message}`);
     }
   }
-
-  updateConfigFingerprint(newFingerprint) {
-    this.updateConfig({ fingerprint: newFingerprint });
-  }
-
+  updateConfigFingerprint(newFingerprint) { this.updateConfig({ fingerprint: newFingerprint }); }
   updateConfigRebroadcastUrls(lanIp) {
     const port = this.rebroadcastPort;
-    const streamUrl = `http://${lanIp}:${port}/stream.mjpg`;
-    const snapUrl   = `http://${lanIp}:${port}/snapshot.jpg`;
     this.updateConfig({
-      rebroadcastStreamUrl: streamUrl,
-      rebroadcastSnapshotUrl: snapUrl
+      rebroadcastStreamUrl: `http://${lanIp}:${port}/stream.mjpg`,
+      rebroadcastSnapshotUrl: `http://${lanIp}:${port}/snapshot.jpg`
     });
   }
 
@@ -151,11 +144,8 @@ class PrusaConnectCameraPlatform {
     const ifaces = os.networkInterfaces();
     const isPriv = ip =>
       /^10\./.test(ip) || /^192\.168\./.test(ip) ||
-      (/^172\./.test(ip) && (() => {
-        const o2 = Number(ip.split('.')[1]); return o2 >= 16 && o2 <= 31;
-      })());
+      (/^172\./.test(ip) && (() => { const o2 = Number(ip.split('.')[1]); return o2 >= 16 && o2 <= 31; })());
 
-    // Prefer private IPv4; else first non-internal IPv4; else 127.0.0.1
     let candidate = null;
     for (const name of Object.keys(ifaces)) {
       for (const i of ifaces[name] || []) {
@@ -170,16 +160,34 @@ class PrusaConnectCameraPlatform {
 
   // ========== CAPTURE & REBROADCAST ==========
   startCapturePipeline() {
-    const args = [
-      ...this.videoSource.trim().split(/\s+/),
-      '-r', String(this.streamFps),
-      '-f', 'image2pipe',
-      '-vcodec', 'mjpeg',
-      '-q:v', String(this.mjpegQscale),
-      '-'
-    ];
-    this.debug(`Starting capture ffmpeg with args: ${JSON.stringify(args)}`);
+    // Prefer MJPEG passthrough if requested in videoSource (zero re-encode CPU).
+    const wantsNativeMJPEG = /\b-input_format\b\s*mjpe?g\b/i.test(this.videoSource) || /\b-f\b\s*mjpe?g\b/i.test(this.videoSource);
 
+    let args;
+    if (wantsNativeMJPEG) {
+      // NOTE: we intentionally do NOT set -r here to avoid a re-timestamping step.
+      args = [
+        ...this.videoSource.trim().split(/\s+/),
+        '-fflags', 'nobuffer',
+        '-f', 'mjpeg',
+        '-c:v', 'copy',
+        '-'
+      ];
+      this.debug('Capture mode: MJPEG passthrough (no re-encode). streamFrameRate ignored.');
+    } else {
+      // Fallback: re-encode to MJPEG (higher CPU)
+      args = [
+        ...this.videoSource.trim().split(/\s+/),
+        '-r', String(this.streamFps),
+        '-f', 'image2pipe',
+        '-vcodec', 'mjpeg',
+        '-q:v', String(this.mjpegQscale),
+        '-'
+      ];
+      this.debug('Capture mode: re-encode to MJPEG.');
+    }
+
+    this.debug(`Starting capture ffmpeg with args: ${JSON.stringify(args)}`);
     this._capture = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
 
     this._capture.stderr.on('data', d => {
@@ -198,9 +206,9 @@ class PrusaConnectCameraPlatform {
       setTimeout(() => this.startCapturePipeline(), 5000);
     });
 
-    // Parse concatenated JPEGs from stdout (image2pipe)
-    const SOI = Buffer.from([0xFF, 0xD8]);
-    const EOI = Buffer.from([0xFF, 0xD9]);
+    // Parse concatenated JPEGs from stdout
+    const SOI = Buffer.from([0xFF, 0xD8]); // start of image
+    const EOI = Buffer.from([0xFF, 0xD9]); // end of image
 
     this._capture.stdout.on('data', chunk => {
       this._frameBuf = Buffer.concat([this._frameBuf, chunk]);
@@ -208,14 +216,17 @@ class PrusaConnectCameraPlatform {
       let start = this._frameBuf.indexOf(SOI);
       while (start !== -1) {
         const end = this._frameBuf.indexOf(EOI, start + 2);
-        if (end === -1) break;
+        if (end === -1) break; // incomplete frame; wait for more
         const frame = this._frameBuf.slice(start, end + 2);
 
+        // store latest for uploads
         this._latestFrame = frame;
         this._latestAt = Date.now();
 
+        // push to stream clients
         this._clients.forEach((res) => this._writeMjpegFrame(res, frame));
 
+        // consume buffer
         this._frameBuf = this._frameBuf.slice(end + 2);
         start = this._frameBuf.indexOf(SOI);
       }
@@ -257,16 +268,13 @@ class PrusaConnectCameraPlatform {
 
     srv.listen(this.rebroadcastPort, '0.0.0.0', () => {
       const lan = this.getLanIp();
-      const loopbackStream = `http://127.0.0.1:${this.rebroadcastPort}/stream.mjpg`;
-      const loopbackSnap   = `http://127.0.0.1:${this.rebroadcastPort}/snapshot.jpg`;
-      const lanStream      = `http://${lan}:${this.rebroadcastPort}/stream.mjpg`;
-      const lanSnap        = `http://${lan}:${this.rebroadcastPort}/snapshot.jpg`;
+      const lanStream = `http://${lan}:${this.rebroadcastPort}/stream.mjpg`;
+      const lanSnap   = `http://${lan}:${this.rebroadcastPort}/snapshot.jpg`;
 
-      // Log both loopback + LAN, nice and obvious
-      logger(`[Rebroadcast] Local: ${loopbackStream}  |  ${loopbackSnap}`);
+      // Log only LAN endpoints (as requested)
       logger(`[Rebroadcast]  LAN : ${lanStream}  |  ${lanSnap}`);
 
-      // Write LAN URLs into config so the GUI shows the real IP (readOnly fields)
+      // Write LAN URLs into config so the GUI shows the actual IP
       this.updateConfigRebroadcastUrls(lan);
     });
   }
@@ -319,7 +327,7 @@ class PrusaConnectCameraPlatform {
               'fingerprint': fingerprint
             }
           });
-          // When rebroadcasting, omit the "(buffer)" suffix per user preference.
+          // When rebroadcasting, omit the "(buffer)" suffix per preference.
           this.logUploadSuccess();
           return;
         }

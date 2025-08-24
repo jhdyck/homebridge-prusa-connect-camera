@@ -15,7 +15,7 @@
         "title": "Video Source (e.g. /dev/video0)",
         "type": "string",
         "default": "-f v4l2 -video_size 960x720 -i /dev/video0",
-        "description": "Full ffmpeg input arguments for your camera."
+        "description": "Full ffmpeg input arguments for your camera. Tip for low-CPU: add -input_format mjpeg if your webcam supports MJPEG."
       },
       "token": {
         "title": "Prusa Connect Token",
@@ -55,13 +55,13 @@
         "title": "Stream Frame Rate",
         "type": "string",
         "default": "15",
-        "description": "Frames per second for the MJPEG stream."
+        "description": "Frames per second for the MJPEG stream. (Ignored if using native MJPEG passthrough.)"
       },
       "streamQuality": {
         "title": "Stream Quality (1-10)",
         "type": "string",
         "default": "7",
-        "description": "Higher is better image quality (and higher bandwidth)."
+        "description": "Higher is better image quality (and higher bandwidth). Not used in MJPEG passthrough mode."
       },
       "snapshotUploadLimitSec": {
         "title": "Snapshot Upload Limit (seconds)",
@@ -98,10 +98,8 @@
       },
       {
         "type": "fieldset",
-        "title": "Video Rebroadcasting [Experimental]",
         "expandable": true,
-        "expanded": false,
-        "collapsible": true,
+        "title": "Video Rebroadcasting [Experimental]",
         "items": [
           "rebroadcastEnabled",
           "rebroadcastPort",
