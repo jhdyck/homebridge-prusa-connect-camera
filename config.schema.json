@@ -15,7 +15,7 @@
         "title": "Video Source (e.g. /dev/video0)",
         "type": "string",
         "default": "-f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0",
-        "description": "Full ffmpeg input arguments for your camera. Tip for low-CPU: include -input_format mjpeg if your webcam supports MJPEG."
+        "description": "Full ffmpeg input arguments for your camera. Tip for low CPU: include -input_format mjpeg if your webcam supports MJPEG."
       },
       "token": {
         "title": "Prusa Connect Token",
@@ -41,10 +41,10 @@
       },
 
       "rebroadcastEnabled": {
-        "title": "Enable Video Rebroadcasting",
+        "title": "Enable Video Rebroadcasting [Experimental]",
         "type": "boolean",
         "default": false,
-        "description": "Plugin exclusively owns the camera and exposes an MJPEG stream + snapshot URL for other plugins."
+        "description": "Enabling will allow this plugin to exclusively own the camera and exposes an MJPEG stream & snapshot URL for other plugins to use, preventing errors caused by multiple plugins trying to access the device simultaneously. Recommended if you also use Camera FFmpeg or any other process that might access the webcam."
       },
       "rebroadcastPort": {
         "title": "Rebroadcast Port",
@@ -52,31 +52,31 @@
         "default": "8088"
       },
       "streamFrameRate": {
-        "title": "Stream Frame Rate",
+        "title": "Rebroadcast Stream Frame Rate",
         "type": "string",
         "default": "15",
-        "description": "Frames per second for the MJPEG stream. (Ignored in MJPEG passthrough mode.)"
+        "description": "Frames per second for the rebroadcast MJPEG stream. (Ignored in MJPEG passthrough mode.)"
       },
       "streamQuality": {
-        "title": "Stream Quality (1-10)",
+        "title": "Rebroadcast Stream Quality (1-10)",
         "type": "string",
         "default": "7",
         "description": "Higher is better image quality (and higher bandwidth). Not used in MJPEG passthrough mode."
       },
       "snapshotUploadLimitSec": {
-        "title": "Snapshot Upload Limit (seconds)",
+        "title": "Rebroadcast Snapshot Upload Limit (seconds)",
         "type": "string",
         "default": "5",
         "description": "Only upload if the latest frame is newer than this many seconds."
       },
       "rebroadcastStreamUrl": {
-        "title": "Stream URL",
+        "title": "Rebroadcast Stream URL",
         "type": "string",
         "readOnly": true,
         "default": "http://LAN_IP:8088/stream.mjpg"
       },
       "rebroadcastSnapshotUrl": {
-        "title": "Snapshot URL",
+        "title": "Rebroadcast Snapshot URL",
         "type": "string",
         "readOnly": true,
         "default": "http://LAN_IP:8088/snapshot.jpg"
@@ -84,34 +84,19 @@
     },
     "required": ["name", "videoSource", "token"],
     "layout": [
-      {
-        "type": "tabs",
-        "items": [
-          {
-            "title": "Prusa Connect",
-            "items": [
-              "name",
-              "videoSource",
-              "token",
-              "fingerprint",
-              "snapshotInterval",
-              "debugLogging"
-            ]
-          },
-          {
-            "title": "Rebroadcasting [Experimental]",
-            "items": [
-              "rebroadcastEnabled",
-              { "key": "rebroadcastPort", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-              { "key": "streamFrameRate", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-              { "key": "streamQuality", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-              { "key": "snapshotUploadLimitSec", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-              { "key": "rebroadcastStreamUrl", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } },
-              { "key": "rebroadcastSnapshotUrl", "condition": { "functionBody": "return model.rebroadcastEnabled === true;" } }
-            ]
-          }
-        ]
-      }
+      "name",
+      "videoSource",
+      "token",
+      "fingerprint",
+      "snapshotInterval",
+      "debugLogging",
+      "rebroadcastEnabled",
+      "rebroadcastPort",
+      "streamFrameRate",
+      "streamQuality",
+      "snapshotUploadLimitSec",
+      "rebroadcastStreamUrl",
+      "rebroadcastSnapshotUrl"
     ]
   }
 }
