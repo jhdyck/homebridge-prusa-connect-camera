@@ -41,53 +41,45 @@
       },
 
       "rebroadcastEnabled": {
-        "title": "[EXPERIMENTAL] Enable Video Rebroadcasting",
+        "title": "Enable Video Rebroadcasting",
         "type": "boolean",
         "default": false,
         "description": "Plugin exclusively owns the camera and exposes an MJPEG stream + snapshot URL for other plugins."
       },
       "rebroadcastPort": {
         "title": "Rebroadcast Port",
-        "type": "integer",
-        "default": 8088,
-        "minimum": 1,
-        "maximum": 65535
+        "type": "string",
+        "default": "8088"
       },
-      "streamFps": {
-        "title": "Stream FPS",
-        "type": "integer",
-        "default": 15,
-        "minimum": 1,
-        "maximum": 60
+      "streamFrameRate": {
+        "title": "Stream Frame Rate",
+        "type": "string",
+        "default": "15",
+        "description": "Frames per second for the MJPEG stream."
       },
-      "mjpegQuality": {
-        "title": "MJPEG Quality (2..31, lower = better)",
-        "type": "integer",
-        "default": 7,
-        "minimum": 2,
-        "maximum": 31
+      "streamQuality": {
+        "title": "Stream Quality (1-10)",
+        "type": "string",
+        "default": "7",
+        "description": "Higher is better image quality (and higher bandwidth)."
       },
-      "maxFrameAgeMs": {
-        "title": "Max Frame Age for Upload (ms)",
-        "type": "integer",
-        "default": 5000,
-        "minimum": 500,
-        "maximum": 60000,
-        "description": "If the latest frame is older than this, the plugin skips uploading that cycle."
+      "snapshotUploadLimitSec": {
+        "title": "Snapshot Upload Limit (seconds)",
+        "type": "string",
+        "default": "5",
+        "description": "Only upload if the latest frame is newer than this many seconds."
       },
       "rebroadcastStreamUrl": {
-        "title": "Stream URL (copy to Camera FFmpeg → source)",
+        "title": "Stream URL",
         "type": "string",
         "readOnly": true,
-        "default": "http://127.0.0.1:8088/stream.mjpg",
-        "description": "If you change the port, update the URL accordingly."
+        "default": "http://LAN_IP:8088/stream.mjpg"
       },
       "rebroadcastSnapshotUrl": {
-        "title": "Snapshot URL (copy to Camera FFmpeg → stillImageSource)",
+        "title": "Snapshot URL",
         "type": "string",
         "readOnly": true,
-        "default": "http://127.0.0.1:8088/snapshot.jpg",
-        "description": "If you change the port, update the URL accordingly."
+        "default": "http://LAN_IP:8088/snapshot.jpg"
       }
     },
     "required": ["name", "videoSource", "token"],
@@ -106,15 +98,15 @@
       },
       {
         "type": "fieldset",
-        "title": "Video Rebroadcasting (Experimental)",
+        "title": "Video Rebroadcasting [Experimental]",
         "expandable": true,
         "expanded": false,
         "items": [
           "rebroadcastEnabled",
           "rebroadcastPort",
-          "streamFps",
-          "mjpegQuality",
-          "maxFrameAgeMs",
+          "streamFrameRate",
+          "streamQuality",
+          "snapshotUploadLimitSec",
           "rebroadcastStreamUrl",
           "rebroadcastSnapshotUrl"
         ]

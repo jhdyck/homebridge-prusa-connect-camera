@@ -1,6 +1,7 @@
 // index.js
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const axios = require('axios');
 const { spawn, exec } = require('child_process');
@@ -32,12 +33,31 @@ class PrusaConnectCameraPlatform {
     this.cameraName = config.name || 'Prusa MK3.5S';
     this.configPath = '/var/lib/homebridge/config.json';
 
-    // --- User-configurable settings ---
-    this.rebroadcastEnabled = config.rebroadcastEnabled === true;   // default OFF until enabled in UI
-    this.rebroadcastPort = Number(config.rebroadcastPort || 8088);
-    this.streamFps = Number(config.streamFps || 15);
-    this.mjpegQuality = Number(config.mjpegQuality || 7);           // 2..31 (lower = better)
-    this.maxFrameAgeMs = Number(config.maxFrameAgeMs || 5000);
+    // ---------- helpers ----------
+    const num = (v, def) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : def;
+    };
+
+    // ---------- User-configurable settings ----------
+    this.rebroadcastEnabled = config.rebroadcastEnabled === true; // default OFF until enabled in UI
+    this.rebroadcastPort = num(config.rebroadcastPort, 8088);
+
+    // Text fields in UI; coerce here
+    this.streamFps = num(config.streamFrameRate ?? config.streamFps, 15);
+
+    // Stream Quality (1..10) → ffmpeg -q:v (2..31, lower=better)
+    const uiQuality = num(config.streamQuality ?? config.mjpegQuality, 7);
+    this.mjpegQscale = Math.max(2, Math.min(31, Math.round(31 - (uiQuality - 1) * (29 / 9))));
+    // uiQuality=10 → q=~2 (best), uiQuality=1 → q=~31 (lowest)
+
+    // Snapshot Upload Limit (seconds) → ms
+    this.maxFrameAgeMs = (() => {
+      if (config.snapshotUploadLimitSec != null) return num(config.snapshotUploadLimitSec, 5) * 1000;
+      if (config.maxFrameAgeMs != null) return num(config.maxFrameAgeMs, 5000);
+      return 5000;
+    })();
+
     this.debugLogging = config.debugLogging === true;
 
     // Camera source for ffmpeg input
@@ -59,7 +79,8 @@ class PrusaConnectCameraPlatform {
       rebroadcastEnabled: this.rebroadcastEnabled,
       rebroadcastPort: this.rebroadcastPort,
       streamFps: this.streamFps,
-      mjpegQuality: this.mjpegQuality,
+      streamQualityUi: uiQuality,
+      mjpegQscale: this.mjpegQscale,
       maxFrameAgeMs: this.maxFrameAgeMs,
       hasToken: !!this.token,
       hasFingerprint: !!this.fingerprint,
@@ -85,31 +106,76 @@ class PrusaConnectCameraPlatform {
     logger(`[${t}] ${COLORS.green}Uploaded ${this.cameraName} snapshot successfully${COLORS.reset}${suffixText ? ' ' + suffixText : ''}`);
   }
 
-  // Persist generated fingerprint back into config.json
-  updateConfigFingerprint(newFingerprint) {
+  // Persist fingerprint or URLs back into config.json
+  updateConfig(nextProps) {
     try {
       const data = fs.readFileSync(this.configPath, 'utf8');
       const cfg = JSON.parse(data);
       if (!cfg.platforms) return this.logError('No platforms section found in config.json');
       const p = cfg.platforms.find(p => p.platform === 'PrusaConnectCamera');
       if (!p) return this.logError('PrusaConnectCamera platform not found in config.json');
-      p.fingerprint = newFingerprint;
-      fs.writeFileSync(this.configPath, JSON.stringify(cfg, null, 2), 'utf8');
-      logger(`Updated fingerprint in config.json: ${newFingerprint}`);
+
+      let changed = false;
+      Object.keys(nextProps).forEach(k => {
+        if (p[k] !== nextProps[k]) {
+          p[k] = nextProps[k];
+          changed = true;
+        }
+      });
+
+      if (changed) {
+        fs.writeFileSync(this.configPath, JSON.stringify(cfg, null, 2), 'utf8');
+        this.debug(`Updated config.json fields: ${Object.keys(nextProps).join(', ')}`);
+      }
     } catch (e) {
-      this.logError(`Error updating config.json fingerprint: ${e.message}`);
+      this.logError(`Error updating config.json: ${e.message}`);
     }
+  }
+
+  updateConfigFingerprint(newFingerprint) {
+    this.updateConfig({ fingerprint: newFingerprint });
+  }
+
+  updateConfigRebroadcastUrls(lanIp) {
+    const port = this.rebroadcastPort;
+    const streamUrl = `http://${lanIp}:${port}/stream.mjpg`;
+    const snapUrl   = `http://${lanIp}:${port}/snapshot.jpg`;
+    this.updateConfig({
+      rebroadcastStreamUrl: streamUrl,
+      rebroadcastSnapshotUrl: snapUrl
+    });
+  }
+
+  // LAN IP detection
+  getLanIp() {
+    const ifaces = os.networkInterfaces();
+    const isPriv = ip =>
+      /^10\./.test(ip) || /^192\.168\./.test(ip) ||
+      (/^172\./.test(ip) && (() => {
+        const o2 = Number(ip.split('.')[1]); return o2 >= 16 && o2 <= 31;
+      })());
+
+    // Prefer private IPv4; else first non-internal IPv4; else 127.0.0.1
+    let candidate = null;
+    for (const name of Object.keys(ifaces)) {
+      for (const i of ifaces[name] || []) {
+        if (i.family === 'IPv4' && !i.internal) {
+          if (isPriv(i.address)) return i.address;
+          if (!candidate) candidate = i.address;
+        }
+      }
+    }
+    return candidate || '127.0.0.1';
   }
 
   // ========== CAPTURE & REBROADCAST ==========
   startCapturePipeline() {
-    // Single persistent ffmpeg that owns the physical device and outputs MJPEG frames on stdout.
     const args = [
       ...this.videoSource.trim().split(/\s+/),
       '-r', String(this.streamFps),
       '-f', 'image2pipe',
       '-vcodec', 'mjpeg',
-      '-q:v', String(this.mjpegQuality),
+      '-q:v', String(this.mjpegQscale),
       '-'
     ];
     this.debug(`Starting capture ffmpeg with args: ${JSON.stringify(args)}`);
@@ -133,8 +199,8 @@ class PrusaConnectCameraPlatform {
     });
 
     // Parse concatenated JPEGs from stdout (image2pipe)
-    const SOI = Buffer.from([0xFF, 0xD8]); // start of image
-    const EOI = Buffer.from([0xFF, 0xD9]); // end of image
+    const SOI = Buffer.from([0xFF, 0xD8]);
+    const EOI = Buffer.from([0xFF, 0xD9]);
 
     this._capture.stdout.on('data', chunk => {
       this._frameBuf = Buffer.concat([this._frameBuf, chunk]);
@@ -142,17 +208,14 @@ class PrusaConnectCameraPlatform {
       let start = this._frameBuf.indexOf(SOI);
       while (start !== -1) {
         const end = this._frameBuf.indexOf(EOI, start + 2);
-        if (end === -1) break; // incomplete frame; wait for more
+        if (end === -1) break;
         const frame = this._frameBuf.slice(start, end + 2);
 
-        // store latest for uploads
         this._latestFrame = frame;
         this._latestAt = Date.now();
 
-        // push to stream clients
         this._clients.forEach((res) => this._writeMjpegFrame(res, frame));
 
-        // consume buffer
         this._frameBuf = this._frameBuf.slice(end + 2);
         start = this._frameBuf.indexOf(SOI);
       }
@@ -193,7 +256,18 @@ class PrusaConnectCameraPlatform {
     });
 
     srv.listen(this.rebroadcastPort, '0.0.0.0', () => {
-      logger(`[Rebroadcast] MJPEG: http://127.0.0.1:${this.rebroadcastPort}/stream.mjpg  |  Snapshot: http://127.0.0.1:${this.rebroadcastPort}/snapshot.jpg`);
+      const lan = this.getLanIp();
+      const loopbackStream = `http://127.0.0.1:${this.rebroadcastPort}/stream.mjpg`;
+      const loopbackSnap   = `http://127.0.0.1:${this.rebroadcastPort}/snapshot.jpg`;
+      const lanStream      = `http://${lan}:${this.rebroadcastPort}/stream.mjpg`;
+      const lanSnap        = `http://${lan}:${this.rebroadcastPort}/snapshot.jpg`;
+
+      // Log both loopback + LAN, nice and obvious
+      logger(`[Rebroadcast] Local: ${loopbackStream}  |  ${loopbackSnap}`);
+      logger(`[Rebroadcast]  LAN : ${lanStream}  |  ${lanSnap}`);
+
+      // Write LAN URLs into config so the GUI shows the real IP (readOnly fields)
+      this.updateConfigRebroadcastUrls(lan);
     });
   }
 
@@ -245,7 +319,8 @@ class PrusaConnectCameraPlatform {
               'fingerprint': fingerprint
             }
           });
-          this.logUploadSuccess('(buffer)');
+          // When rebroadcasting, omit the "(buffer)" suffix per user preference.
+          this.logUploadSuccess();
           return;
         }
 
