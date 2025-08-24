@@ -29,7 +29,7 @@ class PrusaConnectCameraPlatform {
     config = platformConfig || {};
     api = homebridgeApi;
 
-    this.cameraName = config.name || 'Prusa Camera';
+    this.cameraName = config.name || 'Prusa MK3.5S';
     this.configPath = '/var/lib/homebridge/config.json';
 
     // --- User-configurable settings ---
@@ -75,10 +75,15 @@ class PrusaConnectCameraPlatform {
   }
 
   // --- logging helpers ---
-  logSuccess(msg) { logger(`${COLORS.green}${msg}${COLORS.reset}`); }
-  logError(msg)   { logger(`${COLORS.red}${msg}${COLORS.reset}`); }
-  logWarn(msg)    { logger(`${COLORS.yellow}${msg}${COLORS.reset}`); }
-  debug(msg)      { if (this.debugLogging) logger(`[DEBUG] ${msg}`); }
+  logError(msg) { logger(`${COLORS.red}${msg}${COLORS.reset}`); }
+  logWarn(msg)  { logger(`${COLORS.yellow}${msg}${COLORS.reset}`); }
+  debug(msg)    { if (this.debugLogging) logger(`[DEBUG] ${msg}`); }
+
+  // Success line formatter: only the phrase is green, everything else normal
+  logUploadSuccess(suffixText) {
+    const t = new Date().toLocaleTimeString();
+    logger(`[${t}] ${COLORS.green}Uploaded ${this.cameraName} snapshot successfully${COLORS.reset}${suffixText ? ' ' + suffixText : ''}`);
+  }
 
   // Persist generated fingerprint back into config.json
   updateConfigFingerprint(newFingerprint) {
@@ -90,7 +95,7 @@ class PrusaConnectCameraPlatform {
       if (!p) return this.logError('PrusaConnectCamera platform not found in config.json');
       p.fingerprint = newFingerprint;
       fs.writeFileSync(this.configPath, JSON.stringify(cfg, null, 2), 'utf8');
-      this.logSuccess(`Updated fingerprint in config.json: ${newFingerprint}`);
+      logger(`Updated fingerprint in config.json: ${newFingerprint}`);
     } catch (e) {
       this.logError(`Error updating config.json fingerprint: ${e.message}`);
     }
@@ -188,7 +193,7 @@ class PrusaConnectCameraPlatform {
     });
 
     srv.listen(this.rebroadcastPort, '0.0.0.0', () => {
-      this.logSuccess(`[Rebroadcast] MJPEG: http://127.0.0.1:${this.rebroadcastPort}/stream.mjpg  |  Snapshot: http://127.0.0.1:${this.rebroadcastPort}/snapshot.jpg`);
+      logger(`[Rebroadcast] MJPEG: http://127.0.0.1:${this.rebroadcastPort}/stream.mjpg  |  Snapshot: http://127.0.0.1:${this.rebroadcastPort}/snapshot.jpg`);
     });
   }
 
@@ -240,8 +245,7 @@ class PrusaConnectCameraPlatform {
               'fingerprint': fingerprint
             }
           });
-          const t = new Date().toLocaleTimeString();
-          this.logSuccess(`[${t}] Uploaded ${this.cameraName} snapshot successfully (buffer)`);
+          this.logUploadSuccess('(buffer)');
           return;
         }
 
@@ -258,8 +262,7 @@ class PrusaConnectCameraPlatform {
             'fingerprint': fingerprint
           }
         });
-        const t = new Date().toLocaleTimeString();
-        this.logSuccess(`[${t}] Uploaded ${this.cameraName} snapshot successfully (file)`);
+        this.logUploadSuccess(`(file: ${tmpFile})`);
       } catch (err) {
         if (err && err.response) {
           this.logError(`Upload error: ${err.response.status} - ${JSON.stringify(err.response.data)}`);
@@ -300,7 +303,7 @@ class PrusaConnectCameraPlatform {
             return resolve(false);
           }
           this.logError(`FFmpeg exec error: ${error.message}`);
-          if (this.debugLogging) logger(stderr);
+          if (this.debugLogging && stderr) logger(stderr);
           return reject(error);
         }
         resolve(true);

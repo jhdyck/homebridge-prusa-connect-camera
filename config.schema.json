@@ -1,4 +1,4 @@
-{
+k{
   "pluginAlias": "PrusaConnectCamera",
   "pluginType": "platform",
   "schema": {
@@ -30,7 +30,7 @@
         "type": "integer",
         "default": 30,
         "minimum": 10,
-        "maximum": 60"
+        "maximum": 60
       },
       "debugLogging": {
         "title": "Enable Debug Logging",
