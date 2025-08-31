@@ -124,10 +124,10 @@ Low-CPU performance tips (recommended):
 
 Contributions and improvements are welcome! Please open issues or pull requests on [GitHub](https://github.com/jhdyck/homebridge-prusa-connect-camera). I'm very new to the world of coding, so please be patient as I work to improve this plugin!
 
-License
-
-MIT © Justin Dyck
-
 ## Acknowledgements
 
 Thanks to the Homebridge and Prusa Connect communities for inspiration and support.
+
+## License
+
+MIT © Justin Dyck
