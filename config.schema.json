@@ -9,65 +9,75 @@
       "name": {
         "title": "Camera Name",
         "type": "string",
-        "default": "Camera"
+        "default": "Camera",
+        "description": "The name shown in Homebridge logs."
       },
       "videoSource": {
-        "title": "Video Source (e.g. /dev/video0)",
+        "title": "Video Source",
         "type": "string",
-        "default": "-f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0",
-        "description": "Full ffmpeg input arguments for your camera. Tip for low CPU: include -input_format mjpeg if your webcam supports MJPEG."
+        "default": "-i /dev/video0",
+        "description": "Full ffmpeg input arguments for your camera. Example: -i /dev/video0. For lower CPU usage, many webcams also support something like: -f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0"
       },
       "token": {
         "title": "Prusa Connect Token",
-        "type": "string"
+        "type": "string",
+        "description": "Your 20-character camera token from Prusa Connect."
       },
       "fingerprint": {
         "title": "Camera Fingerprint (leave blank to generate automatically)",
         "type": "string",
-        "description": "If left blank, a fingerprint will be generated and saved on first run."
+        "description": "If left blank, a fingerprint will be generated automatically and saved after first run."
       },
       "snapshotInterval": {
         "title": "Snapshot Interval (seconds)",
         "type": "integer",
         "default": 30,
         "minimum": 10,
-        "maximum": 60
+        "maximum": 60,
+        "description": "How often snapshots are uploaded to Prusa Connect."
       },
       "debugLogging": {
         "title": "Enable Debug Logging",
         "type": "boolean",
         "default": false,
-        "description": "Print detailed logs for troubleshooting. Leave off under normal operation."
+        "description": "Enable detailed logs for troubleshooting."
       },
-
       "rebroadcastEnabled": {
         "title": "Enable Video Rebroadcasting [Experimental]",
         "type": "boolean",
         "default": false,
-        "description": "Enabling will allow this plugin to exclusively own the camera and exposes an MJPEG stream & snapshot URL for other plugins to use, preventing errors caused by multiple plugins trying to access the device simultaneously. Recommended if you also use Camera FFmpeg or any other process that might access the webcam."
+        "description": "Lets this plugin own the camera and expose an MJPEG stream and snapshot URL for other plugins to use. Recommended if another plugin also needs camera access."
       },
       "rebroadcastPort": {
         "title": "Rebroadcast Port",
-        "type": "string",
-        "default": "8088"
+        "type": "integer",
+        "default": 8088,
+        "minimum": 1,
+        "maximum": 65535
       },
       "streamFrameRate": {
         "title": "Rebroadcast Stream Frame Rate",
-        "type": "string",
-        "default": "15",
-        "description": "Frames per second for the rebroadcast MJPEG stream. (Ignored in MJPEG passthrough mode.)"
+        "type": "integer",
+        "default": 15,
+        "minimum": 1,
+        "maximum": 60,
+        "description": "Frames per second for the rebroadcast MJPEG stream. Ignored in MJPEG passthrough mode."
       },
       "streamQuality": {
         "title": "Rebroadcast Stream Quality (1-10)",
-        "type": "string",
-        "default": "7",
-        "description": "Higher is better image quality (and higher bandwidth). Not used in MJPEG passthrough mode."
+        "type": "integer",
+        "default": 7,
+        "minimum": 1,
+        "maximum": 10,
+        "description": "Higher is better image quality and higher bandwidth. Ignored in MJPEG passthrough mode."
       },
       "snapshotUploadLimitSec": {
         "title": "Rebroadcast Snapshot Upload Limit (seconds)",
-        "type": "string",
-        "default": "5",
-        "description": "Only upload if the latest frame is newer than this many seconds."
+        "type": "integer",
+        "default": 5,
+        "minimum": 1,
+        "maximum": 60,
+        "description": "Only upload from the rebroadcast buffer if the latest frame is newer than this many seconds."
       },
       "rebroadcastStreamUrl": {
         "title": "Rebroadcast Stream URL",
@@ -82,7 +92,11 @@
         "default": "http://LAN_IP:8088/snapshot.jpg"
       }
     },
-    "required": ["name", "videoSource", "token"],
+    "required": [
+      "name",
+      "videoSource",
+      "token"
+    ],
     "layout": [
       "name",
       "videoSource",
