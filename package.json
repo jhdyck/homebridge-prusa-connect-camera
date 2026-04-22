@@ -6,20 +6,20 @@
   "keywords": [
     "homebridge-plugin",
     "prusa",
-    "3d printer",
+    "prusa-connect",
+    "3d-printer",
     "camera",
     "snapshot",
-    "prusa connect",
-    "raspberry pi",
-    "usb webcam"
+    "raspberry-pi",
+    "webcam"
   ],
   "homepage": "https://github.com/jhdyck/homebridge-prusa-connect-camera",
   "bugs": {
     "url": "https://github.com/jhdyck/homebridge-prusa-connect-camera/issues"
   },
   "engines": {
-    "homebridge": "^1.6.0 || ^2.0.0-beta.0",
-    "node": "^18.20.4 || ^20.15.1 || ^22"
+    "node": ">=18.20.4",
+    "homebridge": "^1.6.0 || ^2.0.0-beta.0"
   },
   "author": "Justin Dyck",
   "license": "MIT",
@@ -34,11 +34,6 @@
     "README.md"
   ],
   "dependencies": {
-    "axios": "^1.4.0",
-    "fluent-ffmpeg": "^2.1.2"
-  },
-  "funding": {
-    "type": "paypal",
-    "url": "https://paypal.me/justindyck"
+    "axios": "^1.4.0"
   }
 }

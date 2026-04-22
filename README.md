@@ -7,61 +7,58 @@
 
 ## Description
 
-A Homebridge plugin to upload webcam snapshots from your Raspberry Pi (or compatible Linux device) to [Prusa Connect](https://connect.prusa3d.com/), enabling remote monitoring of your 3D printer’s build via the Prusa Connect interface. It now includes an optional rebroadcasting mode so this plugin can exclusively own the camera device and share the video to other plugins without device conflicts. This plugin is Homebridge Verified.
+A Homebridge plugin that uploads webcam snapshots from your Raspberry Pi or other Linux device to [Prusa Connect](https://connect.prusa3d.com/), making it easy to monitor your 3D printer remotely. It also includes an optional rebroadcasting mode so this plugin can own the camera device and expose a stream for other plugins, avoiding common device conflict issues.
 
 ## Features
 
-- Captures images from a connected webcam or Raspberry Pi camera.
-- Periodically uploads snapshots to the Prusa Connect backend.
-- Automatically generates and persists a unique camera fingerprint.
-- Simple single-camera setup.
-- Configurable snapshot interval (10–60 seconds).
-- User-configurable FFmpeg input options for video device and resolution.
-- Video rebroadcasting (experimental): exposes an MJPEG stream and snapshot for other plugins (e.g., [homebridge-camera-ffmpeg](https://github.com/homebridge-plugins/homebridge-camera-ffmpeg)).
-- Low-CPU MJPEG passthrough: recommend `-input_format mjpeg` to avoid re-encoding.
-- Debug logging.
-- Handles device busy errors gracefully with retry logic.
+- Uploads snapshots to Prusa Connect on a configurable interval
+- Automatically generates and persists a camera fingerprint if one is not provided
+- Simple single-camera setup
+- Configurable FFmpeg input arguments
+- Optional rebroadcast mode for sharing one camera with other plugins
+- Optional low-CPU MJPEG passthrough mode for supported webcams
+- Debug logging for troubleshooting
+- Graceful retry handling when the camera device is busy
+- Homebridge Verified
 
 ## Compatibility and Requirements
 
-- Homebridge v1.6+; tested with Homebridge UI v5.x.
-- Designed for devices such as Raspberry Pi, many NAS devices, and Linux desktops.
-- Intended for USB webcams or Raspberry Pi camera modules.
-- Requires FFmpeg to be installed and available to the Homebridge process.
+- Homebridge v1.6 or newer
+- Node.js 18 or newer
+- Linux-based systems such as Raspberry Pi, NAS devices, and other Linux hosts
+- FFmpeg must be installed and available to the Homebridge process
+- Intended for USB webcams or Raspberry Pi camera modules
 
 ## Installation
 
-- Install from the Homebridge Plugins tab, or using npm:
+Install from the Homebridge Plugins tab, or with npm:
 
 ```bash
 sudo npm install -g homebridge-prusa-connect-camera
 ```
-- Configure via the plugin config UI.
-- Restart Homebridge.
+
+Then configure the plugin in the Homebridge UI and restart Homebridge.
 
 ## Configuration
 
-Configuration can be done via the configuration UI in the plugin, or you can add the following platform section to your `config.json`, and replace the values as needed:
+You can configure the plugin in the Homebridge UI, or add the following platform block to your `config.json`:
 
 ```json
 {
   "platforms": [
     {
       "platform": "PrusaConnectCamera",
-      "name": "InsertCameraNameHere",
-      "token": "InsertCameraTokenHere",
+      "name": "Camera",
+      "token": "YOUR_20_CHARACTER_PRUSA_CONNECT_TOKEN",
       "fingerprint": "",
-
-      "videoSource": "-f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0",
+      "videoSource": "-i /dev/video0",
       "snapshotInterval": 30,
       "debugLogging": false,
-
       "rebroadcastEnabled": false,
-      "rebroadcastPort": "8088",
-      "streamFrameRate": "15",
-      "streamQuality": "7",
-      "snapshotUploadLimitSec": "5",
-
+      "rebroadcastPort": 8088,
+      "streamFrameRate": 15,
+      "streamQuality": 7,
+      "snapshotUploadLimitSec": 5,
       "rebroadcastStreamUrl": "http://LAN_IP:8088/stream.mjpg",
       "rebroadcastSnapshotUrl": "http://LAN_IP:8088/snapshot.jpg"
     }
@@ -69,65 +66,81 @@ Configuration can be done via the configuration UI in the plugin, or you can add
 }
 ```
 
-Field descriptions:
+### Field descriptions
 
-- `platform`: Must be "PrusaConnectCamera"
+- `platform`: Must be `"PrusaConnectCamera"`
 - `name`: Friendly camera name used in logs
-- `token`: Your Prusa Connect API token, must be 20 or more characters
-- `fingerprint`: A requirement from Prusa for validating incoming images. Leave blank to auto-generate; the plugin writes it back into config.json.
-- `videoSource`: Full FFmpeg input string specifying device and options (e.g., -f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0). Use -input_format mjpeg when supported to avoid re-encoding and lower CPU.
-- `snapshotInterval`: How often to upload snapshots to Prusa Connect, e.g., 30
-- `debugLogging`: Set to `true` to print detailed debug lines; leave `false` for normal operation.
-- `rebroadcastEnabled`: Enable to let this plugin exclusively own the camera and expose an MJPEG stream and a snapshot URL for other plugins to use, preventing errors caused by multiple plugins trying to access the device simultaneously. This is recommended if you also run `homebridge-camera-ffmpeg` or any other process that would open the webcam directly.
-- `rebroadcastPort`: Port for the internal HTTP MJPEG server (default `8088`).
-- `streamFrameRate`: Target FPS for the rebroadcast stream. Ignored in MJPEG passthrough mode.
-- `streamQuality`: 1–10, higher means better quality (and higher bandwidth). Ignored in MJPEG passthrough mode.
-- `snapshotUploadLimitSec`: Skip a Prusa upload if the latest captured frame is older than this many seconds (prevents stale uploads after reconnects).
-- `rebroadcastStreamUrl` and `rebroadcastSnapshotUrl`: Read-only helper fields; on startup the plugin detects your LAN IP and writes the actual URLs here so you can copy them into other plugins.
+- `token`: Your Prusa Connect camera token
+- `fingerprint`: Leave blank to auto-generate and save on first run
+- `videoSource`: Full FFmpeg input arguments for your camera. Default: `-i /dev/video0`
+- `snapshotInterval`: How often snapshots are uploaded to Prusa Connect, in seconds
+- `debugLogging`: Enables detailed debug logs
+- `rebroadcastEnabled`: Lets this plugin own the camera and expose a rebroadcast stream and still image for other plugins
+- `rebroadcastPort`: Port used by the rebroadcast HTTP server
+- `streamFrameRate`: Rebroadcast frame rate in FPS. Ignored in MJPEG passthrough mode
+- `streamQuality`: Rebroadcast image quality from 1 to 10. Ignored in MJPEG passthrough mode
+- `snapshotUploadLimitSec`: When rebroadcasting, only upload to Prusa if the latest buffered frame is newer than this many seconds
+- `rebroadcastStreamUrl`: Read-only helper field populated automatically at startup
+- `rebroadcastSnapshotUrl`: Read-only helper field populated automatically at startup
 
-Note: The videoSource field lets you fully customize your FFmpeg input options, for example to change resolution or device path. Currently, the plugin supports only one camera.
+## Video Source Tips
 
-## Video Rebroadcasting (Experimental Feature)
+The default `videoSource` is:
 
-What it is:
-When enabled, the plugin becomes the single owner of the camera device and runs a lightweight HTTP server, preventing "resource busy" and I/O errors caused by multiple processes trying to open the resource at the same time. This feature provides a multipart MJPEG live stream and a still image snapshot URL for other plugins and processes to use.
+```bash
+-i /dev/video0
+```
 
-How to enable:
-- Set rebroadcastEnabled to true.
-- Optionally adjust rebroadcastPort, streamFrameRate, streamQuality, snapshotUploadLimitSec.
-- Use the Stream URL and Snapshot URL shown in the Homebridge UI in other consumers like homebridge-camera-ffmpeg.
+Many webcams support lower-CPU MJPEG input, which can improve efficiency. For example:
 
-Low-CPU performance tips (recommended):
-- Use native MJPEG from the webcam when possible to avoid re-encoding (e.g. `-input_format mjpeg`)
-- With MJPEG passthrough enabled, the plugin copies frames instead of re-encoding JPEGs, significantly reducing CPU usage.
-- Reduce `streamFrameRate` (for example, 10) if you don’t need 15 fps.
-- Use a smaller video resolution if acceptable (for example, 640x480).
+```bash
+-f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0
+```
+
+If your webcam supports MJPEG, using that form is usually recommended.
+
+## Rebroadcast Mode
+
+When rebroadcasting is enabled, this plugin becomes the only process talking directly to the camera. It then exposes:
+
+- an MJPEG stream URL
+- a still snapshot URL
+
+This is especially useful if you also use plugins such as `homebridge-camera-ffmpeg`, because it avoids camera access conflicts such as `resource busy` and similar device errors.
+
+### Suggested use case
+
+- Enable rebroadcasting in this plugin
+- Copy the generated rebroadcast stream or snapshot URL from the Homebridge UI
+- Use that URL in other camera consumers instead of pointing them directly at `/dev/video0`
 
 ## Usage
 
-- After installation, configure the plugin with your camera name, video source, and the token from Prusa Connect, then restart Homebridge.
-- To obtain the token from Prusa Connect, navigate to the camera tab in the desired printer, and click `Add new other camera`. A token will appear that you can copy.
-- The plugin will automatically generate and save a unique fingerprint in your Homebridge `config.json` after saving and restarting.
-- Snapshots will be taken and uploaded to Prusa Connect at the configured interval.
-- If the video device is busy, the plugin will retry a few times before skipping that snapshot to avoid conflicts.
+- Install the plugin
+- Add your camera token from Prusa Connect
+- Set your desired `videoSource`
+- Restart Homebridge
+- The plugin will begin uploading snapshots automatically
+- If needed, it will generate and persist a fingerprint on first run
+
+To obtain a token from Prusa Connect, open the camera section for your printer and choose the option to add a new external or other camera.
 
 ## Troubleshooting
 
-- Check Homebridge logs for upload status and errors.
-- Ensure your camera device path (e.g., -i /dev/video0) is correct and accessible by the Homebridge user, and check that FFmpeg can read the device with your videoSource arguments.
-- Confirm you have the correct token from Prusa.
-- If you encounter "Resource busy" errors, the plugin will handle them by retrying 3 times automatically before skipping the current snapshot.
-- If the device is frequently busy or the camera is not responding, try enabling rebroadcasting and point other plugins to the new stream and snapshot URLs so this plugin is the only one accessing the device.
-- To reduce CPU usage, ensure `-input_format mjpeg` is present (if supported), lower `streamFrameRate`, and/or reduce the video resolution.
+- Check the Homebridge logs for upload and FFmpeg errors
+- Confirm that FFmpeg can access your camera device with your chosen `videoSource`
+- Make sure your Prusa Connect token is correct
+- If the camera is frequently busy, enable rebroadcast mode so this plugin is the only process using the device directly
+- If CPU usage is higher than expected, try an MJPEG-based `videoSource`, reduce rebroadcast frame rate, or lower resolution
 
 ## Contributing
 
-Contributions and improvements are welcome! Please open issues or pull requests on [GitHub](https://github.com/jhdyck/homebridge-prusa-connect-camera). I'm very new to the world of coding, so please be patient as I work to improve this plugin!
-
-## Acknowledgements
-
-Thanks to the Homebridge and Prusa Connect communities for inspiration and support.
+Contributions and improvements are welcome. Please open issues or pull requests on [GitHub](https://github.com/jhdyck/homebridge-prusa-connect-camera).
 
 ## License
 
 MIT © Justin Dyck
+
+## Acknowledgements
+
+Thanks to the Homebridge and Prusa Connect communities for inspiration and support.
