@@ -25,13 +25,14 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jhdyck/homebridge-prusa-connect-camera.git"
+    "url": "git+https://github.com/jhdyck/homebridge-prusa-connect-camera.git"
   },
   "files": [
     "index.js",
     "config.schema.json",
     "ui.js",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "dependencies": {
     "axios": "^1.4.0"
