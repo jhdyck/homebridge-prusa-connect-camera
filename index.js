@@ -1,9 +1,10 @@
-const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const http = require('http');
 const os = require('os');
 const axios = require('axios');
+const { randomBytes, createHash } = require('crypto');
+const { version } = require('./package.json');
 const { spawn } = require('child_process');
 
 // ANSI color codes for console logs
@@ -29,9 +30,9 @@ class PrusaConnectCameraPlatform {
     this.api = homebridgeApi;
 
     // Defaults aligned with UI expectations
-    this.cameraName = this.config.name || 'Camera';
+    this.cameraName = typeof this.config.name === 'string' && this.config.name.trim() ? this.config.name.trim() : 'Camera';
     this.videoSource = this.config.videoSource || '-i /dev/video0';
-    this.snapshotIntervalSeconds = this.#toPositiveInt(this.config.snapshotInterval, 30);
+    this.snapshotIntervalSeconds = Math.max(10, Math.min(600, this.#toPositiveInt(this.config.snapshotInterval, 30)));
 
     // Prusa auth
     this.token = typeof this.config.token === 'string' ? this.config.token.trim() : '';
@@ -39,8 +40,8 @@ class PrusaConnectCameraPlatform {
 
     // Optional rebroadcast settings
     this.rebroadcastEnabled = this.config.rebroadcastEnabled === true;
-    this.rebroadcastPort = this.#toPositiveInt(this.config.rebroadcastPort, 8088);
-    this.streamFps = this.#toPositiveInt(this.config.streamFrameRate ?? this.config.streamFps, 15);
+    this.rebroadcastPort = Math.min(65535, this.#toPositiveInt(this.config.rebroadcastPort, 8088));
+    this.streamFps = Math.min(60, this.#toPositiveInt(this.config.streamFrameRate ?? this.config.streamFps, 15));
 
     // Stream quality UI scale (1-10) -> ffmpeg q:v scale (2-31, lower is better)
     const uiQuality = this.#toPositiveInt(this.config.streamQuality ?? this.config.mjpegQuality, 7);
@@ -58,7 +59,11 @@ class PrusaConnectCameraPlatform {
     this.debugLogging = this.config.debugLogging === true;
 
     // Internal state
-    this.configPath = this.#resolveConfigPath();
+    this.abortController = new AbortController();
+    this.snapshotProcesses = new Set();
+    this.pendingSleeps = new Map();
+    this.ffmpegPath = this.config.ffmpegPath || 'ffmpeg';
+    this.cameraInfoSent = false;
     this.httpServer = null;
     this.captureProcess = null;
     this.captureRestartTimer = null;
@@ -71,24 +76,15 @@ class PrusaConnectCameraPlatform {
 
     this.uploadClient = axios.create({
       timeout: 15000,
+      maxRedirects: 0,
+      maxBodyLength: 1000000,
+      maxContentLength: 65536,
+      signal: this.abortController.signal,
       headers: {
-        'Content-Type': 'image/jpg',
+        'Content-Type': 'image/jpeg',
+        'User-Agent': `homebridge-prusa-connect-camera/${version}`,
       },
     });
-
-    this.debug(`Init config: ${JSON.stringify({
-      cameraName: this.cameraName,
-      videoSource: this.videoSource,
-      snapshotIntervalSeconds: this.snapshotIntervalSeconds,
-      rebroadcastEnabled: this.rebroadcastEnabled,
-      rebroadcastPort: this.rebroadcastPort,
-      streamFps: this.streamFps,
-      mjpegQscale: this.mjpegQscale,
-      maxFrameAgeMs: this.maxFrameAgeMs,
-      hasToken: Boolean(this.token),
-      hasFingerprint: Boolean(this.fingerprint),
-      configPath: this.configPath || null,
-    })}`);
 
     if (this.api && typeof this.api.on === 'function') {
       this.api.on('shutdown', () => this.shutdown());
@@ -104,20 +100,21 @@ class PrusaConnectCameraPlatform {
 
   // ---------- Logging ----------
   logError(message) {
-    this.log(`${COLORS.red}${message}${COLORS.reset}`);
+    this.log(`${COLORS.red}${this.redact(message)}${COLORS.reset}`);
   }
 
   logWarn(message) {
-    this.log(`${COLORS.yellow}${message}${COLORS.reset}`);
+    this.log(`${COLORS.yellow}${this.redact(message)}${COLORS.reset}`);
   }
 
   debug(message) {
     if (this.debugLogging) {
-      this.log(`[DEBUG] ${message}`);
+      this.log(`[DEBUG] ${this.redact(message)}`);
     }
   }
 
   logUploadSuccess(suffixText = '') {
+    if (!this.debugLogging) return;
     const t = new Date().toLocaleTimeString();
     this.log(
       `[${t}] ${COLORS.green}Uploaded ${this.cameraName} snapshot successfully${COLORS.reset}${suffixText ? ` ${suffixText}` : ''}`
@@ -127,27 +124,7 @@ class PrusaConnectCameraPlatform {
   // ---------- Helpers ----------
   #toPositiveInt(value, fallback) {
     const n = Number(value);
-    return Number.isFinite(n) && n > 0 ? Math.round(n) : fallback;
-  }
-
-  #resolveConfigPath() {
-    const candidates = [
-      '/var/lib/homebridge/config.json',
-      path.join(os.homedir(), '.homebridge', 'config.json'),
-      path.join(process.cwd(), 'config.json'),
-    ];
-
-    for (const candidate of candidates) {
-      try {
-        if (fs.existsSync(candidate)) {
-          return candidate;
-        }
-      } catch (_) {
-        // ignore
-      }
-    }
-
-    return null;
+    return Number.isFinite(n) && n > 0 ? Math.max(1, Math.round(n)) : fallback;
   }
 
   #splitCommandLine(input) {
@@ -215,69 +192,46 @@ class PrusaConnectCameraPlatform {
     return fallback || '127.0.0.1';
   }
 
-  // ---------- Config persistence ----------
-  async updateConfig(nextProps) {
-    if (!this.configPath) {
-      this.debug('Skipping config.json update because config path could not be resolved.');
-      return;
-    }
-
-    try {
-      const raw = await fsp.readFile(this.configPath, 'utf8');
-      const parsed = JSON.parse(raw);
-
-      if (!Array.isArray(parsed.platforms)) {
-        this.logWarn('No platforms section found in config.json; skipping config update.');
-        return;
-      }
-
-      const platform = parsed.platforms.find((p) => p.platform === 'PrusaConnectCamera');
-      if (!platform) {
-        this.logWarn('PrusaConnectCamera platform not found in config.json; skipping config update.');
-        return;
-      }
-
-      let changed = false;
-
-      for (const [key, value] of Object.entries(nextProps)) {
-        if (platform[key] !== value) {
-          platform[key] = value;
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        await fsp.writeFile(this.configPath, JSON.stringify(parsed, null, 2), 'utf8');
-        this.debug(`Updated config.json fields: ${Object.keys(nextProps).join(', ')}`);
-      }
-    } catch (error) {
-      this.logWarn(`Could not update config.json automatically: ${error.message}`);
-    }
-  }
-
+  // Store identity separately; never rewrite Homebridge's configuration file.
   async ensureFingerprint() {
-    if (this.fingerprint && this.fingerprint.length >= 20) {
+    if (this.fingerprint) {
+      if (!/^[\x21-\x7e]{16,64}$/.test(this.fingerprint)) {
+        throw new Error('Fingerprint must contain 16–64 printable non-space ASCII characters. Keep the original fingerprint for an existing camera.');
+      }
       return this.fingerprint;
     }
-
-    this.fingerprint = Buffer.from(
-      `homebridge-${Math.random().toString(36).slice(2)}${Date.now().toString()}`
-    )
-      .toString('base64')
-      .slice(0, 24);
-
-    this.logWarn(`[PrusaConnectCamera] No valid fingerprint provided. Generated: ${this.fingerprint}`);
-    await this.updateConfig({ fingerprint: this.fingerprint });
-
+    const storage = this.api?.user?.storagePath?.();
+    if (!storage) throw new Error('Homebridge storage unavailable; configure a persistent fingerprint manually.');
+    const directory = path.join(storage, 'prusa-connect-camera');
+    await fsp.mkdir(directory, { recursive: true, mode: 0o700 });
+    const key = createHash('sha256').update(this.token).digest('hex');
+    const file = path.join(directory, `${key}.json`);
+    try {
+      const saved = JSON.parse(await fsp.readFile(file, 'utf8'));
+      if (!/^[a-f0-9]{32}$/.test(saved.fingerprint)) throw new Error('Invalid saved camera identity');
+      this.fingerprint = saved.fingerprint;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const fingerprint = randomBytes(16).toString('hex');
+      // Publish the complete file atomically, without replacing an existing identity.
+      const temporary = `${file}.${randomBytes(8).toString('hex')}.tmp`;
+      try {
+        await fsp.writeFile(temporary, JSON.stringify({ fingerprint }), { mode: 0o600, flag: 'wx' });
+        try { await fsp.link(temporary, file); } catch (e) { if (e.code !== 'EEXIST') throw e; }
+      } finally { await fsp.unlink(temporary).catch(() => {}); }
+      const saved = JSON.parse(await fsp.readFile(file, 'utf8'));
+      if (!/^[a-f0-9]{32}$/.test(saved.fingerprint)) throw new Error('Invalid saved camera identity');
+      this.fingerprint = saved.fingerprint;
+    }
     return this.fingerprint;
   }
 
-  async updateConfigRebroadcastUrls() {
-    const lanIp = this.#getLanIp();
-    await this.updateConfig({
-      rebroadcastStreamUrl: `http://${lanIp}:${this.rebroadcastPort}/stream.mjpg`,
-      rebroadcastSnapshotUrl: `http://${lanIp}:${this.rebroadcastPort}/snapshot.jpg`,
-    });
+  redact(value) {
+    let text = String(value);
+    for (const secret of [this.token, this.fingerprint]) {
+      if (secret) text = text.split(secret).join('[redacted]');
+    }
+    return text.replace(/(\w+:\/\/)[^\s/@]+@/g, '$1[redacted]@').replace(/([?&](?:token|password|key)=)[^&\s]+/gi, '$1[redacted]');
   }
 
   // ---------- Rebroadcast ----------
@@ -290,8 +244,8 @@ class PrusaConnectCameraPlatform {
 
     const sourceArgs = this.#splitCommandLine(this.videoSource);
     const wantsNativeMJPEG =
-      /\b-input_format\b\s*mjpe?g\b/i.test(this.videoSource) ||
-      /\b-f\b\s*mjpe?g\b/i.test(this.videoSource);
+      /(?:^|\s)-input_format\s+mjpe?g\b/i.test(this.videoSource) ||
+      /(?:^|\s)-f\s+mjpe?g\b/i.test(this.videoSource);
 
     let args;
     if (wantsNativeMJPEG) {
@@ -315,9 +269,9 @@ class PrusaConnectCameraPlatform {
       this.debug('Capture mode: re-encode to MJPEG.');
     }
 
-    this.debug(`Starting capture ffmpeg with args: ${JSON.stringify(args)}`);
+    this.debug('Starting continuous FFmpeg capture.');
 
-    this.captureProcess = spawn('ffmpeg', args, {
+    const capture = this.captureProcess = spawn(this.ffmpegPath, ['-hide_banner', '-loglevel', 'warning', '-nostdin', ...args], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -332,7 +286,12 @@ class PrusaConnectCameraPlatform {
       }
     });
 
-    this.captureProcess.on('exit', (code, signal) => {
+    capture.on('error', (error) => {
+      this.logError(`FFmpeg could not start: ${error.code || 'unknown error'}. Check ffmpegPath and installation.`);
+    });
+
+    capture.on('close', (code, signal) => {
+      if (this.captureProcess !== capture) return;
       this.captureProcess = null;
 
       if (this.isShuttingDown || !this.rebroadcastEnabled) {
@@ -356,7 +315,7 @@ class PrusaConnectCameraPlatform {
 
       if (this.frameBuffer.length > MAX_BUFFER_BYTES) {
         const lastSoi = this.frameBuffer.lastIndexOf(SOI);
-        this.frameBuffer = lastSoi >= 0 ? this.frameBuffer.slice(lastSoi) : Buffer.alloc(0);
+        this.frameBuffer = lastSoi >= 0 && this.frameBuffer.length - lastSoi <= MAX_BUFFER_BYTES ? this.frameBuffer.subarray(lastSoi) : Buffer.alloc(0);
         this.debug('Capture frame buffer exceeded limit; trimmed buffer.');
       }
 
@@ -389,12 +348,9 @@ class PrusaConnectCameraPlatform {
     }
 
     if (this.captureProcess) {
-      try {
-        this.captureProcess.kill('SIGTERM');
-      } catch (_) {
-        // ignore
-      }
+      const child = this.captureProcess;
       this.captureProcess = null;
+      this.terminateProcess(child);
     }
   }
 
@@ -413,16 +369,17 @@ class PrusaConnectCameraPlatform {
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache',
           Connection: 'close',
-          'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
+          'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
         });
 
+        res.on('error', () => { this.streamClients.delete(res); res.destroy(); });
         this.streamClients.add(res);
 
-        req.on('close', () => {
+        res.on('close', () => {
           this.streamClients.delete(res);
         });
 
-        if (this.latestFrame) {
+        if (this.latestFrame && Date.now() - this.latestFrameAt <= this.maxFrameAgeMs) {
           this.writeMjpegFrame(res, this.latestFrame);
         }
 
@@ -430,7 +387,7 @@ class PrusaConnectCameraPlatform {
       }
 
       if (req.url === '/snapshot.jpg') {
-        if (this.latestFrame) {
+        if (this.latestFrame && Date.now() - this.latestFrameAt <= this.maxFrameAgeMs) {
           res.writeHead(200, {
             'Content-Type': 'image/jpeg',
             'Content-Length': this.latestFrame.length,
@@ -453,7 +410,7 @@ class PrusaConnectCameraPlatform {
       const snapshotUrl = `http://${lanIp}:${this.rebroadcastPort}/snapshot.jpg`;
 
       this.log(`[Rebroadcast] LAN: ${streamUrl} | ${snapshotUrl}`);
-      await this.updateConfigRebroadcastUrls();
+
     });
 
     this.httpServer.on('error', (error) => {
@@ -485,6 +442,13 @@ class PrusaConnectCameraPlatform {
   }
 
   writeMjpegFrame(res, frame) {
+    if (res.destroyed || res.writableEnded) { this.streamClients.delete(res); return; }
+    // Disconnect slow viewers before their output queue can grow indefinitely.
+    if (res.writableLength > 2 * 1024 * 1024) {
+      this.streamClients.delete(res);
+      res.destroy();
+      return;
+    }
     try {
       res.write(`--frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`);
       res.write(frame);
@@ -500,21 +464,46 @@ class PrusaConnectCameraPlatform {
   }
 
   // ---------- Snapshot upload ----------
-  async uploadSnapshot(buffer) {
+  async registerCamera() {
     const fingerprint = await this.ensureFingerprint();
-
-    await this.uploadClient.put('https://webcam.connect.prusa3d.com/c/snapshot', buffer, {
-      headers: {
-        token: this.token,
-        fingerprint,
+    await this.uploadClient.put('https://camera-service.prusa3d.com/v1/camera-info', {
+      config: { name: this.cameraName.slice(0, 32) },
+      features: ['snapshot'],
+      device: {
+        type: 'WEB',
+        manufacturer: 'Homebridge',
+        model: 'Prusa Connect Camera',
+        firmware_version: version,
+        hardware_version: `${os.platform()}-${os.arch()}`.slice(0, 32),
       },
+    }, { headers: { Token: this.token, Fingerprint: fingerprint, 'Content-Type': 'application/json' } });
+    this.cameraInfoSent = true;
+    this.log('Camera registered with Prusa Camera Service.');
+  }
+
+  async uploadSnapshot(buffer) {
+    if (this.isShuttingDown) return;
+    if (!Buffer.isBuffer(buffer) || buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[buffer.length - 2] !== 0xff || buffer[buffer.length - 1] !== 0xd9) {
+      throw new Error('Capture is not a complete JPEG image.');
+    }
+    if (buffer.length > 1000000) throw new Error('Snapshot exceeds Prusa’s 1 MB limit. Reduce camera resolution or stream quality.');
+    if (!this.cameraInfoSent) await this.registerCamera();
+    await this.uploadClient.put('https://camera-service.prusa3d.com/v1/snapshot', buffer, {
+      headers: { Token: this.token, Fingerprint: this.fingerprint, 'Content-Length': String(buffer.length) },
     });
+  }
+
+  terminateProcess(child) {
+    child.kill('SIGTERM');
+    const timer = setTimeout(() => child.kill('SIGKILL'), 2000);
+    timer.unref();
+    child.once('close', () => clearTimeout(timer));
   }
 
   async captureSnapshotToBuffer(maxRetries = 3, retryDelayMs = 3000, timeoutMs = 15000) {
     const sourceArgs = this.#splitCommandLine(this.videoSource);
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries && !this.isShuttingDown; attempt++) {
       try {
         const buffer = await new Promise((resolve, reject) => {
           const args = [
@@ -525,12 +514,15 @@ class PrusaConnectCameraPlatform {
             '-',
           ];
 
-          this.debug(`Running one-off capture with args: ${JSON.stringify(args)}`);
+          this.debug('Capturing a snapshot with FFmpeg.');
 
-          const child = spawn('ffmpeg', args, {
+          const child = spawn(this.ffmpegPath, ['-hide_banner', '-loglevel', 'warning', '-nostdin', ...args], {
             stdio: ['ignore', 'pipe', 'pipe'],
           });
 
+          this.snapshotProcesses.add(child);
+          child.once('close', () => this.snapshotProcesses.delete(child));
+          let outputBytes = 0;
           let stdoutBuffers = [];
           let stderr = '';
           let finished = false;
@@ -544,7 +536,7 @@ class PrusaConnectCameraPlatform {
 
           const timer = setTimeout(() => {
             try {
-              child.kill('SIGTERM');
+              this.terminateProcess(child);
             } catch (_) {
               // ignore
             }
@@ -552,11 +544,18 @@ class PrusaConnectCameraPlatform {
           }, timeoutMs);
 
           child.stdout.on('data', (chunk) => {
+            if (finished) return;
+            outputBytes += chunk.length;
+            if (outputBytes > 1000000) {
+              this.terminateProcess(child);
+              finish(reject, new Error('Snapshot exceeds Prusa’s 1 MB limit. Reduce camera resolution.'));
+              return;
+            }
             stdoutBuffers.push(chunk);
           });
 
           child.stderr.on('data', (chunk) => {
-            stderr += chunk.toString();
+            stderr = (stderr + chunk.toString()).slice(-8192);
           });
 
           child.on('error', (error) => {
@@ -603,16 +602,19 @@ class PrusaConnectCameraPlatform {
   }
 
   startSnapshotLoop() {
-    if (!this.token || this.token.length < 20) {
-      this.logError('You must configure a valid Prusa Connect token (20+ characters) in config.json.');
+    if (!/^[A-Za-z0-9]{20}$/.test(this.token)) {
+      this.logError('Configure a Prusa camera token: exactly 20 letters and numbers.');
       return;
     }
 
     const loop = async () => {
+      let failures = 0;
       while (!this.isShuttingDown) {
-        const startedAt = Date.now();
 
+        let retryAfterMs = 0;
         try {
+          if (!this.cameraInfoSent) await this.registerCamera();
+          if (this.isShuttingDown) break;
           if (this.rebroadcastEnabled) {
             const age = Date.now() - this.latestFrameAt;
 
@@ -629,31 +631,53 @@ class PrusaConnectCameraPlatform {
               this.logUploadSuccess('(captured directly)');
             }
           }
+          failures = 0;
         } catch (error) {
+          if (this.isShuttingDown) break;
+          failures++;
+          const status = error.response?.status;
+          if ([401, 403].includes(status)) {
+            this.logError(`Prusa rejected camera credentials (${status}). Keep your existing fingerprint. If the token is invalid or its 15-minute registration window expired, create a new camera token, save it, and restart Homebridge.`);
+            return;
+          }
+          retryAfterMs = Math.min(300000, 10000 * 2 ** Math.min(failures - 1, 5));
+          const retryHeader = error.response?.headers?.['retry-after'];
+          if (retryHeader) {
+            const seconds = Number(retryHeader);
+            const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryHeader) - Date.now();
+            if (Number.isFinite(delay)) retryAfterMs = Math.max(retryAfterMs, Math.min(86400000, delay));
+          }
           if (error && error.response) {
-            this.logError(`Upload error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+            this.logError(`Prusa request failed (${error.response.status}). Request ID: ${String(error.response.data?.requestId || 'unavailable').slice(0, 128)}. Check credentials/configuration for 4xx errors; retrying with backoff.`);
           } else {
             this.logError(`Upload error: ${error.message || error}`);
           }
         }
 
-        const elapsed = Date.now() - startedAt;
-        const delayMs = Math.max(0, this.snapshotIntervalSeconds * 1000 - elapsed);
+        const delayMs = Math.max(retryAfterMs, this.snapshotIntervalSeconds * 1000);
         await this.sleep(delayMs);
       }
     };
 
-    loop().catch((error) => {
+    this.snapshotLoop = loop().catch((error) => {
       this.logError(`Snapshot loop crashed: ${error.message || error}`);
     });
   }
 
   sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    if (this.isShuttingDown) return Promise.resolve();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.pendingSleeps.delete(timer); resolve(); }, ms);
+      this.pendingSleeps.set(timer, resolve);
+    });
   }
 
   shutdown() {
     this.isShuttingDown = true;
+    this.abortController.abort();
+    for (const [timer, resolve] of this.pendingSleeps) { clearTimeout(timer); resolve(); }
+    this.pendingSleeps.clear();
+    for (const child of this.snapshotProcesses) this.terminateProcess(child);
     this.stopCapturePipeline();
     this.stopHttpServer();
   }
