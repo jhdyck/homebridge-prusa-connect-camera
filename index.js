@@ -64,6 +64,7 @@ class PrusaConnectCameraPlatform {
     this.pendingSleeps = new Map();
     this.ffmpegPath = this.config.ffmpegPath || 'ffmpeg';
     this.cameraInfoSent = false;
+    this.hasUploadedSnapshot = false;
     this.httpServer = null;
     this.captureProcess = null;
     this.captureRestartTimer = null;
@@ -114,7 +115,8 @@ class PrusaConnectCameraPlatform {
   }
 
   logUploadSuccess(suffixText = '') {
-    if (!this.debugLogging) return;
+    if (!this.debugLogging && this.hasUploadedSnapshot) return;
+    this.hasUploadedSnapshot = true;
     const t = new Date().toLocaleTimeString();
     this.log(
       `[${t}] ${COLORS.green}Uploaded ${this.cameraName} snapshot successfully${COLORS.reset}${suffixText ? ` ${suffixText}` : ''}`
@@ -254,6 +256,8 @@ class PrusaConnectCameraPlatform {
         '-fflags', 'nobuffer',
         '-f', 'mjpeg',
         '-c:v', 'copy',
+        // USB/AVI MJPEG can omit Huffman tables needed by browser JPEG decoders.
+        '-bsf:v', 'mjpeg2jpeg',
         '-',
       ];
       this.debug('Capture mode: MJPEG passthrough (no re-encode).');

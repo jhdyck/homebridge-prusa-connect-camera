@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0-beta.2
+
+- Repair MJPEG passthrough frames with FFmpeg’s mjpeg2jpeg bitstream filter, adding missing JPEG Huffman tables without re-encoding. Fixes broken browser snapshots from cameras that output abbreviated AVI1 JPEG frames.
+- Log the first successful snapshot upload even when debug logging is disabled.
+- Remove Docker/container and Linux-specific guidance from settings descriptions; keep platform examples in documentation.
+- Add a regression test for abbreviated MJPEG input.
+
 ## 1.3.0-beta.1
 
 - Migrate to Prusa Camera Service camera-info and snapshot endpoints with explicit User-Agent, JPEG type and Content-Length.

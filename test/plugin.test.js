@@ -125,3 +125,44 @@ test('real FFmpeg continuous capture produces frames and shuts down', async () =
     assert.equal(p.captureProcess, null); assert.equal(p.captureRestartTimer, null);
   } finally { p.shutdown(); }
 });
+test('MJPEG passthrough adds missing Huffman tables without re-encoding', async () => {
+  const { execFileSync } = require('node:child_process');
+  const { writeFile } = require('node:fs/promises');
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'prusa-mjpeg-'));
+  const original = execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=160x120', '-frames:v', '1', '-c:v', 'mjpeg', '-huffman', 'default', '-f', 'mjpeg', 'pipe:1']);
+  // Create synthetic AVI1 camera output: standard Huffman tables omitted.
+  const segments = [Buffer.from([255,216,255,224,0,7,65,86,73,49,0])];
+  let position = 2;
+  while (position < original.length) {
+    const marker = original[position + 1];
+    if (marker === 0xda) { segments.push(original.subarray(position)); break; }
+    const end = position + 2 + original.readUInt16BE(position + 2);
+    if (marker !== 0xc4 && marker !== 0xe0) segments.push(original.subarray(position, end));
+    position = end;
+  }
+  const abbreviated = Buffer.concat(segments);
+  assert.equal(abbreviated.indexOf(Buffer.from([255,196])), -1);
+  const file = path.join(directory, 'camera.mjpg');
+  await writeFile(file, abbreviated);
+  const p = platform({ videoSource: `-re -stream_loop -1 -f mjpeg -i "${file}"` });
+  p.rebroadcastEnabled = true;
+  try {
+    p.startCapturePipeline();
+    await new Promise((resolve, reject) => {
+      const deadline = Date.now() + 5000;
+      const poll = setInterval(() => {
+        if (p.latestFrame) { clearInterval(poll); resolve(); }
+        else if (Date.now() > deadline) { clearInterval(poll); reject(new Error(p.logs.join('\n'))); }
+      }, 25);
+    });
+    const image = p.latestFrame;
+    assert.ok(image.indexOf(Buffer.from([255,196])) > 0, 'complete JPEG must contain Huffman tables');
+    assert.ok(image.includes(Buffer.from('JFIF')));
+    const scan = abbreviated.indexOf(Buffer.from([255,218]));
+    const repairedScan = image.indexOf(Buffer.from([255,218]));
+    assert.deepEqual(image.subarray(repairedScan), abbreviated.subarray(scan), 'compressed image must remain unchanged');
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-frames:v', '1', '-f', 'null', '-'], { input: image });
+    const closed = new Promise(resolve => p.captureProcess.once('close', resolve));
+    p.shutdown(); await closed;
+  } finally { p.shutdown(); await rm(directory, { recursive: true, force: true }); }
+});

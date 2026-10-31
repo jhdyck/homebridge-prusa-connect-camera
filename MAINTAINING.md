@@ -5,7 +5,7 @@ GitHub stores source code and review history. npm distributes the package Homebr
 ## Release process: beta first
 
 1. Commit reviewed changes to a GitHub branch and open a pull request.
-2. Set the version to an unused prerelease such as `1.3.0-beta.1` in both package.json and package-lock.json. Keep `publishConfig.tag` set to `beta` during beta development.
+2. Set the version to an unused prerelease such as `1.3.0-beta.2` in both package.json and package-lock.json. Keep `publishConfig.tag` set to `beta` during beta development.
 3. Run `npm ci`, `npm run check`, `npm test`, and `npm pack --dry-run`. FFmpeg must be available for the integration tests. Check that GitHub CI passes.
 4. Sign in privately with `npm login`, and check the account with `npm whoami`.
 5. Publish from the reviewed branch:
@@ -15,8 +15,8 @@ GitHub stores source code and review history. npm distributes the package Homebr
    npm view homebridge-prusa-connect-camera dist-tags --json
    ```
 
-   Confirm `beta` points to `1.3.0-beta.1` and `latest` still points to the existing stable release. Never publish a beta with the latest tag.
-6. Tag the exact published GitHub commit `v1.3.0-beta.1` and create a GitHub prerelease with the same name. Further beta fixes must use a new version (`beta.2`, etc.); npm versions cannot be reused.
+   Confirm `beta` points to `1.3.0-beta.2` and `latest` still points to the existing stable release. Never publish a beta with the latest tag.
+6. Tag the exact published GitHub commit `v1.3.0-beta.2` and create a GitHub prerelease with the same name. Further beta fixes must use a new version (`beta.2`, etc.); npm versions cannot be reused.
 
 npm may require browser or two-factor authentication during publishing. Complete prompts privately, never share passwords or authentication codes in chat.
 
@@ -25,7 +25,7 @@ npm may require browser or two-factor authentication during publishing. Complete
 The maintainer installs it personally; there is no direct installation by Codex onto their hardware.
 
 1. Download a Homebridge backup from its web UI. Keep the existing token, fingerprint and videoSource.
-2. Open Plugins and this plugin’s version menu. Depending on the UI version it may be labelled **Install Previous Version** or **Install Alternate Version**. Select `1.3.0-beta.1` and install it.
+2. Open Plugins and this plugin’s version menu. Depending on the UI version it may be labelled **Install Previous Version** or **Install Alternate Version**. Select `1.3.0-beta.2` and install it.
 3. If the UI has no suitable picker, run the following in the Homebridge UI terminal (inside the container for Docker installs), then restart Homebridge:
 
    ```sh
@@ -47,7 +47,7 @@ After the maintainer confirms the beta works:
 3. Verify `npm view homebridge-prusa-connect-camera dist-tags --json` reports `latest: 1.3.0`.
 4. Tag the published commit `v1.3.0` and create a normal GitHub release. Regular Homebridge plugin updates will then receive it.
 
-Simply moving the latest tag to `1.3.0-beta.1` does not turn its version into stable 1.3.0. Publish a proper stable version instead.
+Simply moving the latest tag to `1.3.0-beta.2` does not turn its version into stable 1.3.0. Publish a proper stable version instead.
 
 ## Future maintenance
 

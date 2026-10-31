@@ -18,7 +18,7 @@
         "title": "Video Source",
         "type": "string",
         "default": "-i /dev/video0",
-        "description": "Full ffmpeg input arguments for your camera. Example: -i /dev/video0. For lower CPU usage, many webcams also support something like: -f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0"
+        "description": "FFmpeg input arguments for your camera. Use the input format, device path or network URL supported by your operating system and camera."
       },
       "token": {
         "title": "Prusa Connect Token",
@@ -31,7 +31,7 @@
       "fingerprint": {
         "title": "Camera Fingerprint (leave blank to generate automatically)",
         "type": "string",
-        "description": "Keep the existing value when upgrading. Leave blank for a new camera to save its identity in Homebridge storage (persist /homebridge in Docker)."
+        "description": "Keep the existing value when upgrading. For a new camera, leave blank to generate an identity saved in Homebridge storage. Include that storage in your backups."
       },
       "snapshotInterval": {
         "title": "Snapshot Interval (seconds)",
@@ -100,7 +100,7 @@
         "title": "FFmpeg executable",
         "type": "string",
         "default": "ffmpeg",
-        "description": "Executable name or full path, accessible inside the Homebridge container."
+        "description": "Executable name or full path to FFmpeg, accessible to the Homebridge process."
       }
     },
     "required": [
