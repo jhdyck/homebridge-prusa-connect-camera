@@ -1,6 +1,6 @@
 {
   "name": "homebridge-prusa-connect-camera",
-  "version": "1.3.0",
+  "version": "1.3.0-beta.1",
   "description": "Homebridge plugin to upload snapshots to Prusa Connect",
   "main": "index.js",
   "keywords": [
@@ -43,5 +43,9 @@
     "test": "node --test",
     "check": "node --check index.js && node --check ui.js",
     "prepublishOnly": "npm run check && npm test"
+  },
+  "publishConfig": {
+    "tag": "beta",
+    "access": "public"
   }
 }

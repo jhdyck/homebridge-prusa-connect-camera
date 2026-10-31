@@ -4,9 +4,13 @@ Upload JPEG snapshots from an FFmpeg-compatible camera to Prusa Connect using th
 
 Optional MJPEG rebroadcasting shares one camera capture process with other local camera consumers. This plugin uploads still images; it does not create a HomeKit camera accessory.
 
+## Beta release: 1.3.0-beta.1
+
+The Camera Service migration is available through the npm `beta` tag. The stable `latest` tag remains on 1.2.2 until the beta is confirmed working. In the Homebridge Plugins page, open this plugin’s version menu (often labelled **Install Previous Version** or **Install Alternate Version**), select `1.3.0-beta.1`, and restart Homebridge. If your UI does not offer a version picker, use its terminal: `npm install -g homebridge-prusa-connect-camera@beta`, then restart. Back up Homebridge first and keep your existing fingerprint.
+
 ## Upgrade from 1.2.2
 
-Keep your existing `token`, `fingerprint`, and `videoSource`. Version 1.3.0 uses `/v1/camera-info` and `/v1/snapshot` on `camera-service.prusa3d.com`, replacing the old webcam upload host. No legacy endpoint fallback is used.
+Keep your existing `token`, `fingerprint`, and `videoSource`. Version 1.3.0-beta.1 uses `/v1/camera-info` and `/v1/snapshot` on `camera-service.prusa3d.com`, replacing the old webcam upload host. No legacy endpoint fallback is used.
 
 **Do not clear or change an existing fingerprint.** Prusa binds it to the camera token. Existing fingerprints of 16–64 printable ASCII characters are accepted. If you need a replacement token, create a new camera in Prusa Connect and restart this plugin within 15 minutes.
 
@@ -17,6 +21,7 @@ New automatically generated identities are saved in `<Homebridge storage>/prusa-
 - Homebridge 1.6+ or 2.x (see `package.json` for the exact engine range).
 - A Node.js release supported by your Homebridge installation; use Node.js 22 or 24 for current deployments. The package retains its previous Node.js 18.20.4 minimum for compatibility.
 - FFmpeg installed and available **inside the environment running Homebridge**, with access to the camera input. Set `ffmpegPath` if it is not on PATH.
+- Hardware-neutral JavaScript: no native add-ons or CPU-specific binaries are shipped by this plugin. Raspberry Pi (32-bit or 64-bit with a supported Node/Homebridge installation), NAS, Docker, and other Homebridge hosts can use their own FFmpeg executable.
 - An FFmpeg-compatible source. USB device paths are Linux-specific; network cameras, macOS and other hosts require their own FFmpeg input options. Not every camera or host has been hardware-tested.
 - Outbound HTTPS to `camera-service.prusa3d.com`.
 
@@ -88,7 +93,7 @@ Use the container/NAS address reachable by the consumer. Logged IP detection can
 
 | Symptom | Action |
 | --- | --- |
-| Old-host 404 | Confirm the installed version is 1.3.0 or later, then restart Homebridge. |
+| Old-host 404 | Confirm the installed version is 1.3.0-beta.1 or later, then restart Homebridge. |
 | 401 or 403 | Check token and original fingerprint. An unused token expires after 15 minutes; create a replacement camera if necessary. Upload retries stop until restart. |
 | 422 | Check credentials and camera metadata; quote the request ID when reporting an issue. |
 | Image exceeds 1 MB | Lower camera input resolution; lower quality for encoded rebroadcast streams. |
