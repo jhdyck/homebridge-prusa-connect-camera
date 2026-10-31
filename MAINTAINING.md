@@ -16,7 +16,7 @@ GitHub stores source code and review history. npm distributes the package Homebr
    ```
 
    Confirm `beta` points to `1.3.0-beta.2` and `latest` still points to the existing stable release. Never publish a beta with the latest tag.
-6. Tag the exact published GitHub commit `v1.3.0-beta.2` and create a GitHub prerelease with the same name. Further beta fixes must use a new version (`beta.2`, etc.); npm versions cannot be reused.
+6. Tag the exact published GitHub commit `v1.3.0-beta.2` and create a GitHub prerelease with the same name. Further beta fixes must use a new version (`beta.3`, etc.); npm versions cannot be reused.
 
 npm may require browser or two-factor authentication during publishing. Complete prompts privately, never share passwords or authentication codes in chat.
 

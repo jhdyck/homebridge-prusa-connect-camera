@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0
+
+- Adopt the Prusa Camera Service registration and snapshot APIs, replacing the obsolete upload host.
+- Preserve configured camera fingerprints and save new identities in Homebridge storage.
+- Restore missing JPEG tables in MJPEG passthrough mode without re-encoding, fixing broken images in Safari and Prusa Connect.
+- Enforce upload limits, retry transient failures with backoff, and improve cancellation and FFmpeg shutdown.
+- Bound capture/stream buffers, fix MJPEG multipart boundaries, and reject stale snapshots.
+- Update Axios, provide hardware-neutral settings descriptions and platform-specific setup documentation, and add 13 automated tests plus Linux Node 22/24 CI.
+- Promoted from beta.2 after successful physical-camera registration, repeated uploads and visible images in Prusa Connect.
+
+
 ## 1.3.0-beta.2
 
 - Repair MJPEG passthrough frames with FFmpeg’s mjpeg2jpeg bitstream filter, adding missing JPEG Huffman tables without re-encoding. Fixes broken browser snapshots from cameras that output abbreviated AVI1 JPEG frames.
@@ -16,4 +27,4 @@
 - Handle missing FFmpeg, bound capture output/log buffers, and stop capture processes and timers on shutdown.
 - Update Axios; add regression tests, real FFmpeg synthetic capture tests, Linux CI and Docker/release documentation.
 
-Published for opt-in beta testing. Live validation on a physical camera and Prusa account is required before the stable 1.3.0 release.
+Beta changes were validated with a physical camera and Prusa Connect before the stable release.

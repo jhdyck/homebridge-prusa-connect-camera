@@ -4,13 +4,15 @@ Upload JPEG snapshots from an FFmpeg-compatible camera to Prusa Connect using th
 
 Optional MJPEG rebroadcasting shares one camera capture process with other local camera consumers. This plugin uploads still images; it does not create a HomeKit camera accessory.
 
-## Beta release: 1.3.0-beta.2
+## Stable release: 1.3.0
 
-The Camera Service migration is available through the npm `beta` tag. The stable `latest` tag remains on 1.2.2 until the beta is confirmed working. In the Homebridge Plugins page, open this plugin’s version menu (often labelled **Install Previous Version** or **Install Alternate Version**), select `1.3.0-beta.2`, and restart Homebridge. If your UI does not offer a version picker, use its terminal: `npm install -g homebridge-prusa-connect-camera@beta`, then restart. Back up Homebridge first and keep your existing fingerprint.
+The Camera Service migration and JPEG compatibility fix are available through normal Homebridge plugin updates. Update from the Plugins page and restart Homebridge or the plugin’s child bridge. Keep your existing camera token, fingerprint and input settings. Beta.2 users can update to stable 1.3.0 without changing configuration.
+
+Camera capture, registration, recurring uploads and visible Prusa Connect images were confirmed on a physical camera during beta testing. Automated checks run on Linux with Node.js 22 and 24; other hardware still depends on compatible FFmpeg and camera drivers.
 
 ## Upgrade from 1.2.2
 
-Keep your existing `token`, `fingerprint`, and `videoSource`. Version 1.3.0-beta.2 uses `/v1/camera-info` and `/v1/snapshot` on `camera-service.prusa3d.com`, replacing the old webcam upload host. No legacy endpoint fallback is used.
+Keep your existing `token`, `fingerprint`, and `videoSource`. Version 1.3.0 uses `/v1/camera-info` and `/v1/snapshot` on `camera-service.prusa3d.com`, replacing the old webcam upload host. No legacy endpoint fallback is used.
 
 **Do not clear or change an existing fingerprint.** Prusa binds it to the camera token. Existing fingerprints of 16–64 printable ASCII characters are accepted. If you need a replacement token, create a new camera in Prusa Connect and restart this plugin within 15 minutes.
 
@@ -74,7 +76,7 @@ The Linux default is `-i /dev/video0`. A compatible USB camera may support:
 -f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0
 ```
 
-Rebroadcast uses MJPEG passthrough for explicit MJPEG inputs, avoiding re-encoding. Otherwise it encodes a shared stream at `streamFrameRate` (1–60) and `streamQuality` (1–10). These controls do not change passthrough input resolution or frame rate; configure those in `videoSource`.
+Rebroadcast uses MJPEG passthrough for explicit MJPEG inputs, avoiding re-encoding. The mjpeg2jpeg bitstream filter supplies missing JPEG tables required by some browsers. Otherwise it encodes a shared stream at `streamFrameRate` (1–60) and `streamQuality` (1–10). These controls do not change passthrough input resolution or frame rate; configure those in `videoSource`.
 
 For snapshots only, FFmpeg captures one image per upload. When other plugins need the same USB camera, enable rebroadcast here and point them at this plugin’s URLs so only one process opens the device.
 
@@ -93,7 +95,7 @@ Use the container/NAS address reachable by the consumer. Logged IP detection can
 
 | Symptom | Action |
 | --- | --- |
-| Old-host 404 | Confirm the installed version is 1.3.0-beta.2 or later, then restart Homebridge. |
+| Old-host 404 | Confirm the installed version is 1.3.0 or later, then restart Homebridge. |
 | 401 or 403 | Check token and original fingerprint. An unused token expires after 15 minutes; create a replacement camera if necessary. Upload retries stop until restart. |
 | 422 | Check credentials and camera metadata; quote the request ID when reporting an issue. |
 | Image exceeds 1 MB | Lower camera input resolution; lower quality for encoded rebroadcast streams. |
@@ -102,7 +104,7 @@ Use the container/NAS address reachable by the consumer. Logged IP detection can
 | No frames | Check device mapping/permissions and FFmpeg input options in the container. |
 | 429 / 503 / network failure | The plugin retries with increasing delay, up to five minutes, and honours longer Retry-After values up to 24 hours. |
 
-Camera metadata currently uses `WEB` as a compatibility choice for this software uploader. Prusa documents WEB specifically as a browser webcam and does not provide an OTHER type; verify the resulting camera display during your live test. LINK is reserved for cameras registered by a printer. See [camera types](https://camera-service.prusa3d.com/docs/guide/camera-types).
+Camera metadata currently uses `WEB` as a compatibility choice for this software uploader. Prusa documents WEB specifically as a browser webcam and does not provide an OTHER type; Registration and visible snapshots were confirmed during beta testing. LINK is reserved for cameras registered by a printer. See [camera types](https://camera-service.prusa3d.com/docs/guide/camera-types).
 
 ## Development and publishing
 
