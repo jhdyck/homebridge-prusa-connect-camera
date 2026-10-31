@@ -10,30 +10,35 @@
         "title": "Camera Name",
         "type": "string",
         "default": "Camera",
-        "description": "The name shown in Homebridge logs."
+        "description": "The name shown in Homebridge logs.",
+        "maxLength": 32,
+        "minLength": 1
       },
       "videoSource": {
         "title": "Video Source",
         "type": "string",
         "default": "-i /dev/video0",
-        "description": "Full ffmpeg input arguments for your camera. Example: -i /dev/video0. For lower CPU usage, many webcams also support something like: -f v4l2 -input_format mjpeg -video_size 960x720 -i /dev/video0"
+        "description": "FFmpeg input arguments for your camera. Use the input format, device path or network URL supported by your operating system and camera."
       },
       "token": {
         "title": "Prusa Connect Token",
         "type": "string",
-        "description": "Your 20-character camera token from Prusa Connect."
+        "description": "20-character camera token. New tokens must be used within 15 minutes. Keep an existing camera\u2019s fingerprint.",
+        "minLength": 20,
+        "maxLength": 20,
+        "pattern": "^[A-Za-z0-9]{20}$"
       },
       "fingerprint": {
         "title": "Camera Fingerprint (leave blank to generate automatically)",
         "type": "string",
-        "description": "If left blank, a fingerprint will be generated automatically and saved after first run."
+        "description": "Keep the existing value when upgrading. For a new camera, leave blank to generate an identity saved in Homebridge storage. Include that storage in your backups."
       },
       "snapshotInterval": {
         "title": "Snapshot Interval (seconds)",
         "type": "integer",
         "default": 30,
         "minimum": 10,
-        "maximum": 60,
+        "maximum": 600,
         "description": "How often snapshots are uploaded to Prusa Connect."
       },
       "debugLogging": {
@@ -46,7 +51,7 @@
         "title": "Enable Video Rebroadcasting [Experimental]",
         "type": "boolean",
         "default": false,
-        "description": "Lets this plugin own the camera and expose an MJPEG stream and snapshot URL for other plugins to use. Recommended if another plugin also needs camera access."
+        "description": "Lets this plugin own the camera and expose an MJPEG stream and snapshot URL for other plugins to use. Recommended if another plugin also needs camera access. Stream URLs are unauthenticated: use only on a trusted LAN, never forward this port to the internet."
       },
       "rebroadcastPort": {
         "title": "Rebroadcast Port",
@@ -90,6 +95,12 @@
         "type": "string",
         "readOnly": true,
         "default": "http://LAN_IP:8088/snapshot.jpg"
+      },
+      "ffmpegPath": {
+        "title": "FFmpeg executable",
+        "type": "string",
+        "default": "ffmpeg",
+        "description": "Executable name or full path to FFmpeg, accessible to the Homebridge process."
       }
     },
     "required": [
@@ -100,6 +111,7 @@
     "layout": [
       "name",
       "videoSource",
+      "ffmpegPath",
       "token",
       "fingerprint",
       "snapshotInterval",
